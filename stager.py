@@ -344,15 +344,12 @@ class TileStager():
                 The GeoDataFrame from which a bounding box will be calculated
                 and used for the extent of the TMS grid.
         """
-        # For an image, get the zoom level tiles that we will create Get
-        # bounding box of image
         bbox = gdf.total_bounds
         west, south, east, north = bbox
 
         grid_cell_geoms = []
         tiles = []
 
-        # Create a gdf for all the polygons that intersect each tile
         for tile in self.tms.tiles(west, south, east, north, self.zoom_level):
             tile_bb = self.tms.bounds(tile)
             poly = polygon_from_bb(
@@ -383,7 +380,8 @@ class TileStager():
 
     def save_tiles(self, gdf=None):
         """
-            Given a processed GeoDataFrame, save vectors into tiled shapefiles
+            Given a processed GeoDataFrame, save vectors into tiled vector
+            files.
 
             Parameters
             ----------
@@ -502,8 +500,7 @@ class TileStager():
         gdf_summary.to_csv(self.summary_path, mode=mode,
                            index=False, header=header)
 
-        # Log the total time to create the summary and the tile that was
-        # summarized
+        # Log the total time to create the summary
         logger.info(
             'Summarized Tile(z={}, x={}, y={}) in {}'
             .format(

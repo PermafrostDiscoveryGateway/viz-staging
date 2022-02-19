@@ -14,8 +14,8 @@ def get_tile_path(
         path_structure=['z', 'x', 'y'],
         ext='.png'):
     """
-    Creates path to where tiles should be saved that follows a standardized
-    directory structure
+    Creates path to where tiles should be saved/retrieved from that follows a
+    standardized directory structure
 
     Attributes
     -----------
@@ -29,16 +29,16 @@ def get_tile_path(
     path_structure : list, optional
         A list of strings that represent the directory structure of last
         segment of the path that uses the x (TileCol), y (TileRow), and z
-        (TileMatrix) integer values of the tile. By default, the path will be
-        in the format of {TileMatrix}/{TileCol}/{TileRow}.ext, configured as
-        ['z', 'x', 'y'].
+        (TileMatrix) indices of the tile. By default, the path will be in the
+        format of {TileMatrix}/{TileCol}/{TileRow}.ext, configured as ['z',
+        'x', 'y'].
     ext : str, optional
-        The extension for the tile image. Defaults to '.png'.
+        The extension for the tile file. Defaults to '.png'.
 
     Returns
     -------
     path : str
-        A string with a path to where the tile image should be saved
+        A string with a path to the tile file.
     """
 
     if (tile is None) or (tms is None):
@@ -58,7 +58,10 @@ def get_tile_path(
 def polygon_from_bb(north, east, south, west):
     """
         Create a Shapely polygon object from bounding box coordinates
-        Parameters ---------- north : float
+
+        Parameters
+        ----------
+        north : float
             North coordinate of bounding box
         east : float
             East coordinate of bounding box
