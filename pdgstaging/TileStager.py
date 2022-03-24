@@ -6,9 +6,12 @@ import logging
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-import morecantile
+from shapely.geometry import box
 
-from common import get_tile_path, polygon_from_bb
+# polygon_from_bb
+from . import ConfigManager
+from . import TilePathManager
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,103 +36,64 @@ class TileStager():
 
     def __init__(
         self,
-        input_dir=None,
-        input_ext='.shp',
-        output_dir=None,
-        output_ext='.shp',
-        input_crs=None,
-        simplify_tolerance=0.000001,
-        tms_identifier='WorldCRS84Quad',
-        zoom_level=14,
-        tile_path_structure=['z', 'x', 'y'],
-        summary_path='staging-summary.csv',
+        config
     ):
         """
             Initialize the TileStager object.
-
-            Parameters
-            ----------
-            input_dir : str
-                The directory containing all of the input vector files to
-                process. The directory is searched recursively for all files
-                with the given input extension.
-            input_ext : str
-                The extension of the input vector files
-            output_dir : str
-                The directory to save the output vector files. The output files
-                will be saved in a subdirectory named after the TMS.
-            output_ext : str
-                The extension of the output vector files (e.g. '.shp',
-                '.geojson', '.gpkg')
-            input_crs : str
-                The CRS of the input vector files, if the CRS is not specified
-                the file itself. Setting an input_crs does NOT re-project the
-                data.
-            simplify_tolerance : float
-                The tolerance to use when simplifying the geometries
-            tms_identifier : str
-                The name of the TMS to use. Must be one that is supported by
-                the morecantile package.
-            zoom_level : int
-                The zoom level (or 'TileMatrix index') to create tiles for.
-                This should be the highest zoom level that will be used in the
-                resulting raster and 3D tiles.
-            tile_path_structure : list
-                A list of strings that represent the format of last segment of
-                the path that uses the x (TileCol), y (TileRow), and z
-                (TileMatrix) integer values of the tile. By default, the path
-                will be in the format of {TileMatrix}/{TileCol}/{TileRow}.ext,
-                configured as ['z', 'x', 'y'].
-            summary_path : str
-                The path to save a CSV file to that contains a summary of the
-                tiles created during the staging process. If a summary exists
-                from a previous run, new summary rows will be appended to the
-                existing file.
         """
-        self.input_dir = input_dir
-        self.input_ext = input_ext
-        self.output_dir = output_dir
-        self.output_ext = output_ext
-        self.input_crs = input_crs
-        self.simplify_tolerance = simplify_tolerance
-        self.tms_identifier = tms_identifier
-        self.zoom_level = zoom_level
-        self.tile_path_structure = tile_path_structure
-        self.summary_path = summary_path
 
-        # Create the TileMatrixSet for the output tiles
-        self.tms = morecantile.tms.get(tms_identifier)
-        self.output_crs = self.tms.crs
+        self.config = ConfigManager(config)
+        self.tiles = TilePathManager(**self.config.get_path_manager_config())
 
         # Vectorize some functions
         self.which_tiles = np.vectorize(
-            self.which_tile, otypes=[morecantile.commons.Tile]
+            self.which_tile, otypes=[self.tiles.tile_type]
         )
         self.get_all_tile_properties = np.vectorize(
             self.get_tile_properties, otypes=[dict]
         )
 
+        # Configured names of properties that will be added to each polygon
+        self.props = {
+            'centroid_x': self.config.polygon_prop('centroid_x'),
+            'centroid_y': self.config.polygon_prop('centroid_y'),
+            'area': self.config.polygon_prop('area'),
+            'tile': self.config.polygon_prop('tile'),
+            'centroid_tile': self.config.polygon_prop('centroid_tile'),
+            'filename': self.config.polygon_prop('filename'),
+            'identifier': self.config.polygon_prop('identifier'),
+            'centroid_within_tile': self.config.polygon_prop(
+                'centroid_within_tile'),
+        }
+
+        # Stage for the maximum z-level configured
+        self.z_level = self.config.get_max_z()
+
     def stage_all(self):
         """
             Create tiles using all of the available shapefiles
         """
+
         overall_start_time = datetime.now()
-        # Create the output directory if it doesn't exist
-        if not os.path.exists(self.output_dir):
-            os.mkdir(self.output_dir)
-        self.get_input_paths()
-        for path in self.input_paths:
-            self.stage_file(path)
+        input_paths = self.tiles.get_filenames_from_dir('input')
+        num_paths = len(input_paths)
+
+        logger.info(
+            f'Begin staging {num_paths} input vector files. '
+        )
+
+        for path in input_paths:
+            self.stage(path)
+
         # Calculate the total time to stage all files
         total_time = datetime.now() - overall_start_time
-        total_files = len(self.input_paths)
-        avg_time = total_time / total_files
+        avg_time = total_time / num_paths
         logger.info(
-            f'Staged {total_files} files in {total_time} '
+            f'Staged {num_paths} files in {total_time} '
             f'({avg_time} per file on average)'
         )
 
-    def stage_file(self, path):
+    def stage(self, path):
         """
             Process and create tiles for a single vector file
 
@@ -146,54 +110,6 @@ class TileStager():
             self.save_tiles(gdf)
         else:
             logger.warning(f'No features in {path}')
-
-    def get_tile_path(self, tile):
-        """
-            Returns the path to save a tile to.
-
-            Parameters
-            ----------
-            tile : morecantile.commons.Tile
-                The tile to get the path for.
-
-            Returns
-            -------
-            str
-                The path to save the tile to.
-        """
-        return get_tile_path(
-            prefix=self.output_dir,
-            tms=self.tms,
-            tile=tile,
-            path_structure=self.tile_path_structure,
-            ext=self.output_ext
-        )
-
-    def get_input_paths(self):
-        """
-            Get the paths for all of the input data files. Looks recursively
-            through the input directory for all files with the given input
-            extension.
-
-            Returns
-            -------
-            list
-                A list of paths to all of the files found in the input_dir with
-                the given input_ext.
-        """
-        start_time = datetime.now()
-        input_paths = []
-        for root, dirs, files in os.walk(self.input_dir):
-            for file in files:
-                if file.endswith(self.input_ext):
-                    path = os.path.join(root, file)
-                    input_paths.append(path)
-        logger.info(
-            f'Found {len(input_paths)} vector files in directory: '
-            f'{self.input_dir} in {datetime.now() - start_time}'
-        )
-        self.input_paths = input_paths
-        return input_paths
 
     def get_data(self, input_path=None):
         """
@@ -212,10 +128,30 @@ class TileStager():
 
         start_time = datetime.now()
         logger.info(f'Reading vector file: {input_path}')
-        gdf = gpd.read_file(input_path)
+        try:
+            gdf = gpd.read_file(input_path)
+        except FileNotFoundError:
+            gdf = None
+            logger.warning(f'{input_path} not found. It will be skipped.')
         logger.info(
             f'Read in {input_path} in {(datetime.now() - start_time)}'
         )
+
+        # Check that none of the existing properties match the configured
+        # properties that will be created. Checks must be case insensitive.
+        to_create = self.props.values()
+        existing = gdf.columns.values
+        duplicated = [b for b in to_create if b.lower() in (a.lower()
+                                                            for a in existing)]
+
+        if len(duplicated) > 0:
+            error_msg = 'The following properties already exist in the '
+            error_msg += f'input vector file: {duplicated}'
+            error_msg += '\nPlease remove them or change the configured '
+            error_msg += 'property names.'
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
         return gdf
 
     def set_crs(self, gdf):
@@ -235,14 +171,19 @@ class TileStager():
 
         """
         start_time = datetime.now()
+
+        input_crs = self.config.get('input_crs')
+        output_crs = self.tiles.crs
+
         # Set the input CRS if it hasn't been set
-        if self.input_crs:
+        if input_crs:
             gdf.set_crs(
-                self.input_crs, inplace=True, allow_override=True
+                input_crs, inplace=True, allow_override=True
             )
         # Re-project the geoms
-        if self.output_crs:
-            gdf.to_crs(self.output_crs, inplace=True)
+        if output_crs:
+            gdf.to_crs(output_crs, inplace=True)
+
         logger.info(
             f'Re-projected {len(gdf.index)} polygons in '
             f'{datetime.now() - start_time}'
@@ -265,11 +206,13 @@ class TileStager():
                 The GeoDataFrame with the simplified geometries
         """
         start_time = datetime.now()
-        gdf['geometry'] = gdf['geometry'].simplify(self.simplify_tolerance)
-        logger.info(
-            f'Simplified {len(gdf.index)} polygons in '
-            f'{datetime.now() - start_time}'
-        )
+        tolerance = self.config.get('simplify_tolerance')
+        if tolerance is not None:
+            gdf['geometry'] = gdf['geometry'].simplify(tolerance)
+            logger.info(
+                f'Simplified {len(gdf.index)} polygons in '
+                f'{datetime.now() - start_time}'
+            )
         return gdf
 
     def add_properties(self, gdf, path=''):
@@ -293,22 +236,26 @@ class TileStager():
 
         start_time = datetime.now()
 
+        props = self.props
+
         # Get the centroids and area, identify the tile for each polygon.
         # Calculating these properties will give a warning when the CRS is not
         # a projected CRS. Since the geometries are small, the resulting
         # numbers should be accurate enough.
         centroids = gdf.centroid
-        gdf['centroid_tile'] = self.which_tiles(centroids.x, centroids.y)
-        gdf['area'] = gdf.area
-        gdf['centroid_x'] = centroids.x
-        gdf['centroid_y'] = centroids.y
+        gdf[props['centroid_tile']] = self.which_tiles(
+            centroids.x, centroids.y)
+        gdf[props['area']] = gdf.area
+        gdf[props['centroid_x']] = centroids.x
+        gdf[props['centroid_y']] = centroids.y
         # Add the original file name and an identifier for each polygon
-        gdf['filename'] = path
-        gdf['identifier'] = [
+        gdf[props['filename']] = path
+        gdf[props['identifier']] = [
             str(uuid.uuid4()) for _ in range(len(gdf.index))
         ]
         gdf = self.assign_tile(gdf)
-        gdf['centroid_within_tile'] = gdf['tile'] == gdf['centroid_tile']
+        centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
+        gdf[props['centroid_within_tile']] = centroid_only
 
         logger.info(
             f'Added properties for {len(gdf.index)} vectors in '
@@ -329,7 +276,8 @@ class TileStager():
         """
         grid = self.make_tms_grid(gdf)
         gridded_gdf = gdf.sjoin(grid, how='left', predicate='intersects')
-        gridded_gdf = gridded_gdf.rename(columns={'index_right': 'tile'})
+        gridded_gdf = gridded_gdf.rename(
+            columns={'index_right': self.props['tile']})
 
         return gridded_gdf
 
@@ -344,23 +292,26 @@ class TileStager():
                 The GeoDataFrame from which a bounding box will be calculated
                 and used for the extent of the TMS grid.
         """
+
         bbox = gdf.total_bounds
         west, south, east, north = bbox
 
         grid_cell_geoms = []
         tiles = []
 
-        for tile in self.tms.tiles(west, south, east, north, self.zoom_level):
-            tile_bb = self.tms.bounds(tile)
-            poly = polygon_from_bb(
-                tile_bb.top, tile_bb.right, tile_bb.bottom, tile_bb.left
-            )
-            grid_cell_geoms.append(poly)
+        for tile in self.tiles.tms.tiles(
+                west, south, east, north, self.z_level):
+            tile_bb = self.tiles.get_bounding_box(tile)
+            grid_cell_geoms.append(box(
+                maxy=tile_bb['top'],
+                miny=tile_bb['bottom'],
+                maxx=tile_bb['right'],
+                minx=tile_bb['left']))
             tiles.append(tile)
 
         grid = gpd.GeoDataFrame({'geometry': grid_cell_geoms, 'tile': tiles})
         grid = grid.set_index('tile')
-        grid = grid.set_crs(self.tms.crs)
+        grid = grid.set_crs(self.tiles.crs)
 
         return grid
 
@@ -376,7 +327,7 @@ class TileStager():
             y : float
                 The y coordinate to identify the tile for
         """
-        return self.tms.tile(x, y, self.zoom_level)
+        return self.tiles.tms.tile(x, y, self.z_level)
 
     def save_tiles(self, gdf=None):
         """
@@ -393,10 +344,11 @@ class TileStager():
             # TODO give warning
             return None
 
-        for tile, data in gdf.groupby('tile'):
+        for tile, data in gdf.groupby(self.props['tile']):
 
             # Get the tile path
-            tile_path = self.get_tile_path(tile)
+            tile_path = self.tiles.path_from_tile(tile, base_dir='staged')
+            self.tiles.create_dirs(tile_path)
 
             # Track the start time, the tile, and the number of vectors
             start_time = datetime.now()
@@ -404,18 +356,15 @@ class TileStager():
                 f'Saving {len(data.index)} vectors to tile {tile_path}'
             )
 
-            tile_dir = os.path.dirname(tile_path)
-
-            # Create the directory if it doesn't exist
-            if not os.path.exists(tile_dir):
-                os.makedirs(tile_dir, exist_ok=True)
+            self.tiles.create_dirs(tile_path)
 
             # Save a copy of the tile column for the summary
-            tiles = data['tile'].copy()
+            tiles = data[self.props['tile']].copy()
 
             # Tile must be a string for saving as attribute
-            data['tile'] = data['tile'].astype('str')
-            data['centroid_tile'] = data['tile'].astype('str')
+            data[self.props['tile']] = data[self.props['tile']].astype('str')
+            tile_strings = data[self.props['tile']].astype('str')
+            data[self.props['centroid_tile']] = tile_strings
 
             # mode = 'a' will append data to the file if it already exists.
             mode = 'w'
@@ -429,7 +378,7 @@ class TileStager():
             )
 
             # Record what was saved
-            data['tile'] = tiles
+            data[self.props['tile']] = tiles
             self.summarize(data)
 
     def get_tile_properties(self, tile):
@@ -442,15 +391,15 @@ class TileStager():
             tile : morecantile.commons.Tile
                 The TMS tile to get properties for
         """
-        bounds = self.tms.bounds(tile)
+        bounds = self.tiles.get_bounding_box(tile)
         return {
             'tile_x': tile.x,
             'tile_y': tile.y,
             'tile_z': tile.z,
-            'tile_top': bounds.top,
-            'tile_right': bounds.right,
-            'tile_bottom': bounds.bottom,
-            'tile_left': bounds.left
+            'tile_top': bounds['top'],
+            'tile_right': bounds['right'],
+            'tile_bottom': bounds['bottom'],
+            'tile_left': bounds['left']
         }
 
     def summarize(self, gdf=None):
@@ -472,12 +421,22 @@ class TileStager():
         # Log the summary event, including how long it takes
         start_time = datetime.now()
 
+        prop_file = self.props['filename']
+        prop_tile = self.props['tile']
+        prop_area = self.props['area']
+
         # Since summarized is called for each tile that is created, grouping
         # should create 1 row of data to add to the summary dataframe
-        gdf_summary = gdf.groupby(['filename', 'tile'], as_index=False).agg(
+        gdf_grouped = gdf.groupby([prop_file, prop_tile], as_index=False)
+        gdf_summary = gdf_grouped.agg(
             num_polygons=('geometry', 'count'),
-            area_polygons=('area', 'sum')
+            area_polygons=(prop_area, 'sum')
         )
+        gdf_summary = gdf_summary.rename(
+            columns={
+                prop_file: 'filename',
+                prop_tile: 'tile'
+            })
         # Add the date time that the tile was saved
         gdf_summary['datetime'] = datetime.now()
 
@@ -488,16 +447,17 @@ class TileStager():
             [gdf_summary, pd.DataFrame(list(tile_props))],
             axis=1
         )
-        gdf_summary['tms_identifier'] = self.tms_identifier
+        gdf_summary['tms_identifier'] = self.tiles.tms_id
         gdf_summary = gdf_summary.drop(columns=['tile'])
 
         # Save the summary to a file
+        summary_path = self.config.get('filename_staging_summary')
         header = False
         mode = 'a'
-        if not os.path.isfile(self.summary_path):
+        if not os.path.isfile(summary_path):
             header = True
             mode = 'w'
-        gdf_summary.to_csv(self.summary_path, mode=mode,
+        gdf_summary.to_csv(summary_path, mode=mode,
                            index=False, header=header)
 
         # Log the total time to create the summary
