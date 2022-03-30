@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 with open('README.md', 'r') as fh:
     long_description = fh.read()
@@ -6,9 +6,11 @@ with open('README.md', 'r') as fh:
 setup(
     name='pdgstaging',
     version='0.1.0',
+    description='PDG Visualization staging pipeline',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    py_modules=find_packages(),
+    url='https://github.com/PermafrostDiscoveryGateway/viz-staging',
+    py_modules=['pdgstaging'],
     install_requires=[
         'numpy==1.22.2',
         'pandas==1.4.1',
