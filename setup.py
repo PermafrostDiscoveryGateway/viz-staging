@@ -10,7 +10,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/PermafrostDiscoveryGateway/viz-staging',
-    py_modules=['pdgstaging'],
+    packages=['pdgstaging'],
     install_requires=[
         'numpy==1.22.2',
         'pandas==1.4.1',
