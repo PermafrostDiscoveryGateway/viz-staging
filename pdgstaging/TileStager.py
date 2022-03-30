@@ -2,13 +2,13 @@ import uuid
 import os
 from datetime import datetime
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import box
 
-# polygon_from_bb
 from . import ConfigManager
 from . import TilePathManager
 
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class TileStager():
     """
         Prepares vector files containing polygon geometries for the tiling
-        process. Splits input data into smaller tile-specific files according
+        process. Splits input data into tile-specific files according
         to the given OGC TileMatrixSet ("TMS").
 
         The following steps are performed:
@@ -45,6 +45,13 @@ class TileStager():
         self.config = ConfigManager(config)
         self.tiles = TilePathManager(**self.config.get_path_manager_config())
 
+        # Configured names of properties that will be added to each polygon
+        # during either staging or rasterization
+        self.props = self.config.props
+
+        # Create tiles for the maximum z-level configured
+        self.z_level = self.config.get_max_z()
+
         # Vectorize some functions
         self.which_tiles = np.vectorize(
             self.which_tile, otypes=[self.tiles.tile_type]
@@ -52,22 +59,6 @@ class TileStager():
         self.get_all_tile_properties = np.vectorize(
             self.get_tile_properties, otypes=[dict]
         )
-
-        # Configured names of properties that will be added to each polygon
-        self.props = {
-            'centroid_x': self.config.polygon_prop('centroid_x'),
-            'centroid_y': self.config.polygon_prop('centroid_y'),
-            'area': self.config.polygon_prop('area'),
-            'tile': self.config.polygon_prop('tile'),
-            'centroid_tile': self.config.polygon_prop('centroid_tile'),
-            'filename': self.config.polygon_prop('filename'),
-            'identifier': self.config.polygon_prop('identifier'),
-            'centroid_within_tile': self.config.polygon_prop(
-                'centroid_within_tile'),
-        }
-
-        # Stage for the maximum z-level configured
-        self.z_level = self.config.get_max_z()
 
     def stage_all(self):
         """
@@ -138,7 +129,8 @@ class TileStager():
         )
 
         # Check that none of the existing properties match the configured
-        # properties that will be created. Checks must be case insensitive.
+        # properties that will be created. Finoa (used by geopandas) gives
+        # error if properties are duplicated regardless of case.
         to_create = self.props.values()
         existing = gdf.columns.values
         duplicated = [b for b in to_create if b.lower() in (a.lower()
@@ -242,10 +234,17 @@ class TileStager():
         # Calculating these properties will give a warning when the CRS is not
         # a projected CRS. Since the geometries are small, the resulting
         # numbers should be accurate enough.
-        centroids = gdf.centroid
+
+        # Catch the UserWarning that is raised if centroid is calculated
+        # using the a non-projected coordinate system.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            centroids = gdf.centroid
+            gdf[props['area']] = gdf.area
+
         gdf[props['centroid_tile']] = self.which_tiles(
             centroids.x, centroids.y)
-        gdf[props['area']] = gdf.area
+
         gdf[props['centroid_x']] = centroids.x
         gdf[props['centroid_y']] = centroids.y
         # Add the original file name and an identifier for each polygon
@@ -370,7 +369,11 @@ class TileStager():
             mode = 'w'
             if os.path.isfile(tile_path):
                 mode = 'a'
-            data.to_file(tile_path, mode=mode)
+            # Ignore the FutureWarning that is raised because of geopandas
+            # issue 2347
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                data.to_file(tile_path, mode=mode)
 
             # Track the end time, the total time, and the number of vectors
             logger.info(

@@ -1,9 +1,9 @@
 import logging
 import logging.config
 import argparse
-from .TileStager import TileStager
+from pdgstaging import TileStager
 
-# Set up logging (TODO: move to config file)
+# Set up logging (TODO: move to logging config file)
 
 # log_dict = {
 #     'version': 1,

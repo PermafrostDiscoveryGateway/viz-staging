@@ -8,87 +8,202 @@ class ConfigManager():
         (tms) to use, how to summarize vector data into raster values, which
         z-range to create tiles for, etc.
 
-        (TODO: fully document the config object)
+        The config object, passed as an argument when initializing a
+        ConfigManager, is a dictionary with the properties listed below. To see
+        all of the default values for the config object, see the
+        ConfigManager.defaults property.
 
-        The config object is a dictionary with the following properties:
-            - tms_id (str): The ID of the TMS to use. Must much a TMS
-                supported by the morecantile library.
-            - tile_path_structure (list of str): The path structure to use for
-              the tiles.
-            - geotiff_dir (str): The directory to write & read geotiff files.
-            - web_tiles_dir (str): The directory to save the web tiles to.
-            - web_tiles_type (str): The extension to use for the web tiles,
-              e.g. '.png'.
-            - z_range (tuple of int): The range of z levels to use, e.g. (0,
-              13).
-            - tile_size (tuple of int): The size of the tiles to use, e.g.
-              (256, 256).
-            - statistics (list of dict): A list of statistics and options to
-              use to convert vector data into raster data. For each item in the
-              list, a separate band will be created in geotiff files, and a
-              separate layer will be created for web tiles. The statistics list
-              is a list of dictionaries. Each dictionary contains the following
-              properties:
-                - name: The name of the statistic.
-                - weight_by: The property to weight the statistic by.
-                - property: The property to use for the statistic.
-                - aggregation_method: The aggregation method to use. See the
-                    Raster.py documentation for more info.
-                - resampling_method: The resampling method to use when
-                    combining raster data from child tiles into parent tiles.
-                - val_range: A min and max value for the statistic. This is
-                    used for consistency when mapping the color palette to the
-                    pixel values during web tile image generation.
-                - palette: A list of colors to use for the color palette (for
-                    web-tiles)
-                - z_config: A dict of config options specific to each z-level.
-                  Currently, only setting a val_range is supported. Eventually,
-                  this could be used to set z-specific tile sizes and color
-                  palettes.
+        - Directory paths and filenames. Where input data is read from and
+          output data is written to. The only required property is the
+          'dir_input' property. Otherwise, directories will be created in the
+          current working directory.
+            - dir_input: str
+                The directory to read input vector files from.
+            - dir_staged: str
+                The directory to save staged files to.
+            - dir_geotiff : str
+                The directory to save GeoTIFF files to.
+            - dir_web_tiles : str
+                The directory to save web tiles to.
+            - filename_staging_summary : str
+                The path and filename to save a CSV file that summarizes the
+                tiled files that were created during the staging process.
 
+        - Filetypes for input and output data.
+            - ext_input : str
+                The file extension of input files, e.g. '.shp' or '.gpkg'.
+            - ext_staged : str
+                The file extension to use for staged vector files, e.g. '.shp'
+                or '.gpkg'.
+            - ext_web_tiles : str
+                The file extension to use for web tiles, e.g. '.png' or '.jpg'.
 
-        Note: When a min or max value within a val_range is set to None, then
-            a min or max value will be calculated for the each z-level for
-            which geotiffs are created.
+        - Properties. Names of properties added to polygons created during
+          processing. These names cannot already exist in the input data. It is
+          unlikely that you will need to change these properties from their
+          default values (only if there are existing conflicting properties in
+          your input data).
+            - prop_centroid_x : str
+                The name of the property that indicates the x-coordinate of the
+                centroid of the polygon. Defaults to 'staging_centroid_x',
+            - prop_centroid_y : str
+                The name of the property that the property that indicates the
+                y-coordinate of the centroid of the polygon. Defaults to
+                'staging_centroid_y',
+            - prop_area : str
+                The name of the property that contains the calculated area of
+                the polygon. Defaults to 'staging_area',
+            - prop_tile : str
+                The name of the property that indicates which tile the polygon
+                belongs to (for this property, a polygon belongs to a tile if
+                it intersects it.) . Defaults to 'staging_tile',
+            - prop_centroid_tile : str
+                The name of the property that indicates which tile the
+                polygon's centroid falls within. Defaults to
+                'staging_centroid_tile',
+            - prop_filename : str
+                The name of the property that indicates the filename from which
+                the polygon originated, before staging. Defaults to
+                'staging_filename',
+            - prop_identifier : str
+                The name of the the property that gives a unique ID to the
+                polygon. Defaults to 'staging_identifier',
+            - prop_centroid_within_tile : str
+                The name of the boolean property that indicates if a polygon's
+                tile property matches it's centroid property. Defaults to
+                'staging_centroid_within_tile'
+
+        - Staging options.
+            - input_crs : str
+                If the input data is lacking CRS information, then the CRS of
+                the input data. This will overwrite existing CRS data, if
+                GeoPandas detects any. Input data will not be reprojected to
+                this CRS.
+            - simplify_tolerance : float
+                The tolerance to use when simplifying the input polygons.
+                Defaults to 0.0001. Set to None to skip simplification.
+
+        - Tiling & rasterization options.
+            - tms_id : str
+                The ID of the TMS to use. Must much a TMS supported by the
+                morecantile library. Defaults to 'WorldCRS84Quad'.
+            - tile_path_structure : list of int
+                A list of strings that represent the directory structure of
+                last segment of the path that uses the tms (TileMatrixSet),
+                style (layer/statistic), x index (TileCol), y index (TileRow),
+                and z index (TileMatrix) of the tile. By default, the path will
+                be in the format of
+                {TileMatrixSet}/{Style}/{TileMatrix}/{TileCol}/{TileRow}.ext,
+                configured as ('style', 'tms', 'z', 'x', 'y'). The x, y, z
+                indices must always be last in the list. ('tms', 'style', 'z',
+                'x', 'y'),
+            - z_range : tuple of int
+                The minimum and maximum z levels to create tiles for, e.g. (0,
+                13). Tiled vector files will be created for the maximum z
+                level. GeoTIFF and webtiles will be created for all z-levels.
+                Defaults to (0, 13)
+            - tile_size : tuple of int
+                The pixel size (width, height) of the GeoTiffs and webtiles to
+                create. Defaults to (256, 256).
+            - statistics : list of dict
+                A list of statistics and options to use to convert vector data
+                into raster data. For each item in the list, a separate band
+                will be created in GeoTIFF files, and a separate layer will be
+                created for web tiles. The statistics list is a list of
+                dictionaries. Each dictionary contains the following
+                properties:
+                    - name : str
+                        The name of the statistic. Can be anything but must be
+                        unique.
+                    - weight_by : 'count' or 'area'
+                        The weighting method for the statistic. Options are
+                        'count' and 'area'. 'count' indicates that the
+                        statistic is calculated based on the number of polygons
+                        in each cell (location is identified by the centroid of
+                        the polygon). 'area' indicates that the statistic is
+                        calculated based on the area of the polygons that cover
+                        each cell.
+                    - property : str
+                        The name of the property in the vector file to
+                        calculate the statistic for. Besides the properties
+                        that are available from the input vector data, the
+                        following keywords can be used:
+                            'centroids_per_pixel' : The number of polygons with
+                                centroids that fall in the cell/pixel. (Only
+                                available if weight_by is 'count')
+                            'area_within_pixel' : The area of the
+                                polygon that falls within a given cell/pixel,
+                                in the units of the CRS. (Only available if
+                                weight_by is 'area')
+                            'area_per_pixel_area' : Same as
+                                'area_within_pixel', but divided by the area of
+                                the cell/pixel. (Only available if weight_by is
+                                'area')
+                    - aggregation_method : str
+                        The function to be applied to the property. The vector
+                        data will first be grouped into cells, then the
+                        aggregation method will be used to summarize the given
+                        property in the cell. Method can be any method allowed
+                        in the 'func' property of the panda's aggregate method,
+                        e.g. 'sum', 'count', 'mean', etc.
+                    - resampling_method : str
+                        The resampling method to use when combining raster data
+                        from child tiles into parent tiles. See rasterio's
+                        Resampling Methods for list of the available methods.
+                    - val_range : str
+                        A min and max value for the statistic. This is used for
+                        consistency when mapping the color palette to the pixel
+                        values during web tile image generation. When a min or
+                        max value within a val_range is set to None, then a min
+                        or max value will be calculated for the each z-level
+                        for which geotiffs are created.
+                    - palette : str
+                        A list of colors to use for the color palette
+                      (for web-tiles)
+                    - z_config : str
+                        A dict of config options specific to each z-level.
+                        Currently, only setting a val_range is supported.
+                        Eventually, this could be used to set z-specific tile
+                        sizes and color palettes.
 
         Example config:
         ---------------
 
         {
-          "tms_id": "WorldCRS84Quad",
-          "tile_path_structure": [ "tms", "style", "z", "x", "y"],
-          "geotiff_dir": "home/my-geotiffs",
-          "web_tiles_dir": "home/my-web-tiles",
-          "web_tiles_type": ".png",
-          "z_range": [ 0, 13],
-          "tile_size": [256,256],
-          "statistics": [
-            {
-              "name": "polygon_count",
-              "weight_by": "count",
-              "property": "polygon_count",
-              "aggregation_method": "sum",
-              "resampling_method": "sum",
-              "val_range": [0, None],
-              "palette": ["#ffffff", "#000000"]
-            },
-            {
-              "name": "coverage",
-              "weight_by": "area",
-              "property": "grid_area_prop",
-              "aggregation_method": "sum",
-              "resampling_method": "average",
-              "val_range": [0,1],
-              "palette": ["red", "blue"],
-              "z_config": {
-                0: {
-                  "val_range": [0,0.5],
-                }, ...
-              }
-            }
-          ]
+            "dir_geotiff": "/path/to/geotiff/dir",
+            "dir_web_tiles": "/path/to/web/tiles/dir",
+            "dir_staged": "/path/to/staged/dir",
+            "dir_input": "/path/to/input/dir",
+            "filename_staging_summary": "staging_summary.csv",
+            "ext_web_tiles": ".png",
+            "ext_input": ".shp",
+            "ext_staged": ".gpkg",
+            "statistics": [
+                {
+                    "name": "polygon_count",
+                    "weight_by": "count",
+                    "property": "centroids_per_pixel",
+                    "aggregation_method": "sum",
+                    "resampling_method": "sum",
+                    "val_range": [0, None],
+                    "palette": ["#ffffff", "#000000"]
+                },
+                {
+                    "name": "coverage",
+                    "weight_by": "area",
+                    "property": "area_per_pixel_area",
+                    "aggregation_method": "sum",
+                    "resampling_method": "average",
+                    "val_range": [0,1],
+                    "palette": ["red", "blue"],
+                    "z_config": {
+                        0: {
+                        "val_range": [0,0.5],
+                        }, ...
+                    }
+                }
+            ]
         }
-
     """
 
     defaults = {
@@ -106,8 +221,6 @@ class ConfigManager():
         'prop_centroid_x': 'staging_centroid_x',
         'prop_centroid_y': 'staging_centroid_y',
         'prop_area': 'staging_area',
-        'prop_gridded_polygon_area': 'gridded_polygon_area',
-        'prop_gridded_polygon_area_prop': 'gridded_polygon_area_prop',
         'prop_tile': 'staging_tile',
         'prop_centroid_tile': 'staging_centroid_tile',
         'prop_filename': 'staging_filename',
@@ -164,6 +277,13 @@ class ConfigManager():
         # Save a copy of the original config object, since we will be modifying
         # it
         self.original_config = self.config.copy()
+
+        # Make a shortcut to the property names
+        self.props = {}
+        for k in self.config.keys():
+            if k.startswith('prop_'):
+                prop_name = k.removeprefix('prop_')
+                self.props[prop_name] = self.config[k]
 
     def write(self, filename):
         """
@@ -232,7 +352,6 @@ class ConfigManager():
             Parameters
             ----------
             prop : 'centroid_x' or 'centroid_y' or 'area' or
-                    'gridded_polygon_area' or 'gridded_polygon_area_prop' or
                     'tile' or 'centroid_tile' or 'filename' or 'identifier' or
                     'centroid_within_tile'
                 The property.
@@ -632,11 +751,11 @@ class ConfigManager():
                         'path_structure': ['style', 'tms', 'z', 'x', 'y'],
                         'base_dirs': {
                             'geotiff': {
-                                'path': 'geotiff',
+                                'path': 'path/to/geotiff/dir',
                                 'ext': '.tif'
                             },
                             'web_tiles': {
-                                'path': 'web_tiles',
+                                'path': 'path/to/web_tiles/dir',
                                 'ext': '.png'
                             }
                         }

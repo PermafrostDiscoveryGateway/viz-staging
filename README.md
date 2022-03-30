@@ -18,14 +18,14 @@ The area and centroid of each polygon are calculated in the CRS of the TMS. When
 
 ## Polygon properties
 
-After being run through this staging process, each polygon will have the following new properties:
-- **tile** (string) - The tile that this polygon has been assigned to (matches the file). Indicated as a string in the format `Tile(x=6, y=10, z=4)`.
-- **centroid_tile** (string) - The tile within which the centroid of this polygon falls (may differ from file). Indicated as a string in the format `Tile(x=6, y=10, z=4)`.
-- **area** (number) - The area of the tile in the units of the CRS
-- **centroid_x**, **centroid_y** (number) - The x and y coordinate for the centroid of the tile (in the units of the CRS)
-- **filename** (string) - The path to the file from which this polygon originated
-- **identifier** (string) - A unique identifier for the polygon
-- **centroid_within_tile** (boolean) - True when the `centroid_tile` property matches the `tile`, i.e. when the centroid of the polygon is within the same tile as the file it is saved in
+After being run through this staging process, each polygon will be assigned the new properties that are listed below. The names of these properties are configurable, but the default names are used here.
+- **staging_tile** (string) - The tile that this polygon has been assigned to (matches the file). Indicated as a string in the format `Tile(x=6, y=10, z=4)`.
+- **staging_centroid_tile** (string) - The tile within which the centroid of this polygon falls (may differ from file). Indicated as a string in the format `Tile(x=6, y=10, z=4)`.
+- **staging_area** (number) - The area of the tile in the units of the CRS
+- **staging_centroid_x**, **staging_centroid_y** (number) - The x and y coordinate for the centroid of the tile (in the units of the CRS)
+- **staging_filename** (string) - The path to the file from which this polygon originated
+- **staging_identifier** (string) - A unique identifier for the polygon
+- **staging_centroid_within_tile** (boolean) - True when the `centroid_tile` property matches the `tile`, i.e. when the centroid of the polygon is within the same tile as the file it is saved in
 
 ## Summary fields
 
@@ -45,11 +45,21 @@ The staging process will also output a summary CSV file with one row for each ti
 
 ## Running
 
-Uses Python version `3.9` and packages listed under `requirements.txt`
+Requires Python version `3.9` and `libspatialindex` or `libspatialindex-dev`
 
-1. Make sure you have Python version 3.9 installed and that you know the path to that version of Python (try `which python3.9`).
-2. Clone this repository.
-3. From within the newly created directory, create a virtual environment: `/usr/local/bin/python3.9 -m venv .venv` (where `/usr/local/bin/python3.9` is your path to version 3.9 of Python).
-4. Activate the environment: `source .venv/bin/activate`.
-5. Install dependencies: `pip install -r requirements.txt`.
-6. Run: `python main.py -i /path/to/input/shapefiles -o /path/to/output/directory`.
+1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
+2. Make sure that Python version 3.9 is installed (try `which python3.9`).
+3. Install `pdgstaging` from GitHub repo using pip: `pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git`
+4. Create a config JSON file for the staging job, see `help(pdgstaging.ConfigManager)` for details. See `pdgstaging.ConfigManager.defaults` for default config values.
+5. Run: `python -m pdgstaging -c '/path/to/config.json'`
+
+## Development
+
+Uses Python version `3.9`, packages listed under `requirements.txt`, and `libspatialindex` or `libspatialindex-dev`
+
+1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
+2. Make sure you have Python version 3.9 installed and that you know the path to that version of Python (try `which python3.9`).
+3. Clone this repository.
+4. From within the newly created directory, create a virtual environment: `/usr/local/bin/python3.9 -m venv .venv` (where `/usr/local/bin/python3.9` is your path to version 3.9 of Python).
+5. Activate the environment: `source .venv/bin/activate`.
+6. Install dependencies: `pip install -r requirements.txt`.
