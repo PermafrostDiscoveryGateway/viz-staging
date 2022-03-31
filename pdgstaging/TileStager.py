@@ -69,6 +69,12 @@ class TileStager():
         input_paths = self.tiles.get_filenames_from_dir('input')
         num_paths = len(input_paths)
 
+        if num_paths == 0:
+            logger.error(
+                'No vector files found for staging.'
+            )
+            return
+
         logger.info(
             f'Begin staging {num_paths} input vector files. '
         )

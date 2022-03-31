@@ -239,7 +239,7 @@ class ConfigManager():
             {
                 'name': 'polygon_count',
                 'weight_by': 'count',
-                'property': 'polygon_count',
+                'property': 'centroids_per_pixel',
                 'aggregation_method': 'sum',
                 'resampling_method': 'sum',
                 'val_range': [0, None],
@@ -247,7 +247,7 @@ class ConfigManager():
             {
                 'name': 'coverage',
                 'weight_by': 'area',
-                'property': 'grid_area_prop',
+                'property': 'area_per_pixel_area',
                 'aggregation_method': 'sum',
                 'resampling_method': 'average',
                 'val_range': [0, 1]
