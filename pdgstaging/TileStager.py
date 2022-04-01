@@ -254,7 +254,7 @@ class TileStager():
         gdf[props['centroid_x']] = centroids.x
         gdf[props['centroid_y']] = centroids.y
         # Add the original file name and an identifier for each polygon
-        gdf[props['filename']] = path
+        gdf[props['filename']] = os.path.basename(path)
         gdf[props['identifier']] = [
             str(uuid.uuid4()) for _ in range(len(gdf.index))
         ]
