@@ -166,6 +166,52 @@ class ConfigManager():
                         Eventually, this could be used to set z-specific tile
                         sizes and color palettes.
 
+            - Deduplication options. Deduplicate input that comes from multiple
+              source files.
+                - deduplicate : list of str or None
+                    When to deduplicate the input data. Options are 'staging',
+                    'raster', '3dtiles', or None to skip deduplication.
+                - deduplicate_keep_rules : list of tuple: []
+                    Rules that define which of the polygons to keep when two or
+                    more are duplicates. A list of tuples of the form
+                    (property, operator). The property is the property that
+                    exists in the geodataframe to use for the comparison. The
+                    operator is either 'larger' or 'smaller'. If the rule is
+                    'larger', the polygon with the largest value for the
+                    property will be kept. If the rule is 'smaller', the
+                    polygon with the smallest value for the property will be
+                    kept. When two properties are equal, then the next property
+                    in the list will be checked.
+                - deduplicate_overlap_tolerance : float, optional
+                    The minimum proportion of a polygon's area that must be
+                    overlapped by another polygon to be considered a duplicate.
+                    Default is 0.5. Set to None to ignore overlap proportions
+                    when comparing polygons, and set a centroid threshold
+                    instead. Note that both an overlap_tolerance AND a
+                    centroid_tolerance can be used.
+                - deduplicate_overlap_both : bool, optional
+                    If True, then the overlap_tolerance proportion must be True
+                    for both of the intersecting polygons to be considered a
+                    duplicate. If False, then the overlap_tolerance proportion
+                    must be True for only one of the intersecting polygons to
+                    be considered a duplicate. Default is True.
+                - deduplicate_centroid_tolerance : float, optional
+                    The maximum distance between the centroids of two polygons
+                    to be considered a duplicate. Default is None. Set to None
+                    to ignore centroid distances when comparing polygons, and
+                    set an overlap threshold instead. Note that both an
+                    overlap_tolerance AND a centroid_tolerance can be used. The
+                    unit of the distance is the unit of the distance_crs
+                    property (e.g. meters for EPSG:3857), or the unit of the
+                    GeoDataFrame if distance_crs is None.
+                - deduplicate_distance_crs : str, optional
+                    The CRS to use for the centroid distance calculation.
+                    Default is EPSG:3857. Centroid points will be re-projected
+                    to this CRS before calculating the distance between them.
+                    centroid_tolerance will use the units of this CRS. Set to
+                    None to skip the re-projection and use the CRS of the
+                    GeoDataFrame.
+
         Example config:
         ---------------
 
@@ -252,7 +298,14 @@ class ConfigManager():
                 'resampling_method': 'average',
                 'val_range': [0, 1]
             }
-        ]
+        ],
+        # Deduplication options. Do not deduplicate by default.
+        'deduplicate': None,
+        'deduplicate_keep_rules': [],
+        'deduplicate_overlap_tolerance': 0.5,
+        'deduplicate_overlap_both': True,
+        'deduplicate_centroid_tolerance': None,
+        'deduplicate_distance_crs': 'EPSG:3857'
     }
 
     def __init__(self, config=None):
@@ -782,6 +835,44 @@ class ConfigManager():
                 }
             }
         }
+
+    def get_deduplication_config(self):
+        """
+            Return input options for the pdgstaging.deduplication method
+        """
+        return {
+            'prop_overlap': self.polygon_prop('filename'),
+            'prop_area': self.polygon_prop('area'),
+            'prop_centroid_x': self.polygon_prop('centroid_x'),
+            'prop_centroid_y': self.polygon_prop('centroid_y'),
+            'keep_rules': self.get('deduplicate_keep_rules'),
+            'overlap_tolerance': self.get('deduplicate_overlap_tolerance'),
+            'overlap_both': self.get('deduplicate_overlap_both'),
+            'centroid_tolerance': self.get('deduplicate_centroid_tolerance'),
+            'distance_crs': self.get('deduplicate_distance_crs'),
+            'return_intersections': False
+        }
+
+    def deduplicate_at(self, step):
+        """
+            Check whether deduplication should occur at a given step in the
+            pipeline
+
+            Parameters
+            ----------
+            step : 'staging' or 'raster' or '3dtiles'
+                The step name.
+
+            Returns
+            -------
+            bool
+                Whether deduplication should occur at the given step.
+        """
+        dedup = self.get('deduplicate')
+        if isinstance(dedup, list) and step in dedup:
+            return True
+        else:
+            return False
 
     def update_ranges(self, new_ranges):
         """

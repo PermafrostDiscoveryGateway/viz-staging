@@ -123,11 +123,12 @@ def deduplicate(
     """
 
     if prop_overlap is None:
-        # TODO: raise error?
-        return
+        raise ValueError('An overlap property must be specified for '
+                         'deduplication.')
 
     if (keep_rules is None) or (len(keep_rules) == 0):
-        return
+        raise ValueError('A list of keep rules must be specified for '
+                         'deduplication.')
 
     # Use uuid for the properties that will be temporarily created so they do
     # not conflict with existing properties

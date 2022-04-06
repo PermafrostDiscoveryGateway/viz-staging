@@ -11,6 +11,7 @@ from shapely.geometry import box
 
 from . import ConfigManager
 from . import TilePathManager
+from .Deduplicator import deduplicate
 
 
 logger = logging.getLogger(__name__)
@@ -371,10 +372,20 @@ class TileStager():
             tile_strings = data[self.props['tile']].astype('str')
             data[self.props['centroid_tile']] = tile_strings
 
-            # mode = 'a' will append data to the file if it already exists.
+            # Open the file in write mode by default
             mode = 'w'
+
             if os.path.isfile(tile_path):
-                mode = 'a'
+                # If the file exists and config is set to deduplciate during
+                # staging, then open the file, append the new data, and
+                # deduplicate. Overwrite existing file.
+                if(self.config.deduplicate_at('staging')):
+                    gdf = self.combine_and_deduplicate(gdf, tile_path)
+                # If the file exists and config is set to deduplciate during
+                # processing, then just append the new data to the existing
+                # file.
+                else:
+                    mode = 'a'
             # Ignore the FutureWarning that is raised because of geopandas
             # issue 2347
             with warnings.catch_warnings():
@@ -389,6 +400,44 @@ class TileStager():
             # Record what was saved
             data[self.props['tile']] = tiles
             self.summarize(data)
+
+    def combine_and_deduplicate(self, gdf, tile_path):
+        """
+            Combine existing data for a tile with the new data in a
+            GeoDataFrame, and deduplicate the result.
+
+            Parameters
+            ----------
+            gdf : GeoDataFrame
+                The GeoDataFrame with new data to add to the existing tile
+            tile_path : str
+                The path to the existing data
+
+            Returns
+            -------
+            gdf : GeoDataFrame
+                The combined and deduplicated GeoDataFrame
+        """
+
+        dedup_start_time = datetime.now()
+
+        existing_gdf = gpd.read_file(tile_path)
+        gdf = pd.concat([gdf, existing_gdf])
+
+        logger.info(
+            f'Starting deduplication in tile {tile_path} with {len(gdf)} '
+            'polygons.'
+        )
+
+        dedup = deduplicate(
+            gdf, **self.config.get_deduplication_config())
+        gdf = dedup['keep']
+
+        logger.info(
+            f'Finished deduplication in {datetime.now() - dedup_start_time}'
+        )
+
+        return gdf
 
     def get_tile_properties(self, tile):
         """
