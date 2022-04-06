@@ -232,7 +232,7 @@ class ConfigManager():
         'simplify_tolerance': 0.0001,
         # Tiling & rasterization options
         'tms_id': 'WorldCRS84Quad',
-        'tile_path_structure': ('tms', 'style', 'z', 'x', 'y'),
+        'tile_path_structure': ('style', 'tms', 'z', 'x', 'y'),
         'z_range': (0, 13),
         'tile_size': (256, 256),
         'statistics': [
