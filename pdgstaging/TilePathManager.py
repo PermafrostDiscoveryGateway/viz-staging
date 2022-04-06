@@ -346,10 +346,8 @@ class TilePathManager():
             # Any remaining items in the path_items list are the base
             # directory. Add the base_dir to the path_dict as a combined string
             # (if multiple parts)
-            if len(path_items) > 1:
+            if len(path_items) > 0:
                 path_dict['base_dir'] = os.path.join(*path_items)
-            else:
-                path_dict['base_dir'] = path_items[0]
 
         return path_dict
 
