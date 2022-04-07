@@ -1,5 +1,22 @@
 # Deduplication
 
+## Before
+
+![Before example](images/iwp_before.png)
+
+## After
+
+![After example](images/iwp_deduplicated.png)
+
+Uses the options:
+```python
+overlap_tolerance=0.5
+overlap_both=True
+centroid_tolerance=5
+```
+
+# How it works
+
 ![two-polygons-two-files](images/1_two-polygons-two-files.png)
 
 ## Configuration options
