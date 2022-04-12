@@ -1,4 +1,33 @@
-# viz-staging
+# PDG Staging
+
+Divides vector files into tiled vector files according to a specified [OGC Two Dimensional Tile Matrix Set](http://docs.opengeospatial.org/is/17-083r2/17-083r2.html) in preparation for processing into other formats in the PDG workflow.
+
+![PDG staging summary](docs/images/staging_tldr.png)
+
+## Install
+
+Requires Python version `3.9` and `libspatialindex` or `libspatialindex-dev`
+
+1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
+2. Make sure that Python version 3.9 is installed (try `which python3.9`).
+3. Install `pdgstaging` from GitHub repo using pip: `pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git`
+
+## Usage
+
+4. Create a config JSON file for the staging job, see [the docs](docs/config.md) for details, `help(pdgstaging.ConfigManager)` for all configuration options, and `pdgstaging.ConfigManager.defaults` for default config values.
+
+**From the command line:**
+- run: `python -m pdgstaging -c '/path/to/config.json'`
+
+**In python:**
+```python
+import pdgstaging
+stager = pdgstaging.TileStager('/path/to/config.json')
+stager.stage_all()
+
+# OR, to stage only one file
+stager.stage('path/to/input/file.shp')
+```
 
 ## Vector file staging for the PDG tiling pipeline
 
@@ -42,24 +71,3 @@ The staging process will also output a summary CSV file with one row for each ti
 
 - It is assumed that incoming vector data comprises only valid polygons. This has not yet been tested with multi-polygons, points, lines, or other geometries.
 - It's also assumed that each incoming vector file is staged only once. If a file passes through the staging step twice, then all polygons from that file will be duplicated in the output (but with a different identifier). This is due to the fact that when a tile file already exists, additional polygons that belong to this tile will be appended to the file.
-
-## Running
-
-Requires Python version `3.9` and `libspatialindex` or `libspatialindex-dev`
-
-1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
-2. Make sure that Python version 3.9 is installed (try `which python3.9`).
-3. Install `pdgstaging` from GitHub repo using pip: `pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git`
-4. Create a config JSON file for the staging job, see `help(pdgstaging.ConfigManager)` for details. See `pdgstaging.ConfigManager.defaults` for default config values.
-5. Run: `python -m pdgstaging -c '/path/to/config.json'`
-
-## Development
-
-Uses Python version `3.9`, packages listed under `requirements.txt`, and `libspatialindex` or `libspatialindex-dev`
-
-1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
-2. Make sure you have Python version 3.9 installed and that you know the path to that version of Python (try `which python3.9`).
-3. Clone this repository.
-4. From within the newly created directory, create a virtual environment: `/usr/local/bin/python3.9 -m venv .venv` (where `/usr/local/bin/python3.9` is your path to version 3.9 of Python).
-5. Activate the environment: `source .venv/bin/activate`.
-6. Install dependencies: `pip install -r requirements.txt`.
