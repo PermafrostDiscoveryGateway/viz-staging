@@ -7,7 +7,7 @@ import itertools
 
 def deduplicate(
     gdf,
-    prop_overlap=None,
+    split_by=None,
     prop_area=None,
     prop_centroid_x=None,
     prop_centroid_y=None,
@@ -48,7 +48,7 @@ def deduplicate(
     ----------
     gdf : GeoDataFrame
         The GeoDataFrame to deduplicate.
-    prop_overlap : str
+    split_by : str
         The name of the property in the GeoDataFrame to use to identify
         duplicated polygons. Two polygons must have a different value for this
         property to be considered duplicated. e.g. 'source_file.' Every
@@ -122,7 +122,7 @@ def deduplicate(
             The GeoDataFrame with the intersections.
     """
 
-    if prop_overlap is None:
+    if split_by is None:
         raise ValueError('An overlap property must be specified for '
                          'deduplication.')
 
@@ -174,7 +174,7 @@ def deduplicate(
     working_cols = [
         'geometry',
         prop_id,
-        prop_overlap,
+        split_by,
         prop_area,
         prop_centroid_x,
         prop_centroid_y] + sort_props
@@ -182,7 +182,7 @@ def deduplicate(
     gdf.drop(gdf.columns.difference(working_cols), axis=1, inplace=True)
 
     # Split the gdf by the overlap property (e.g. source file)
-    gdf_grouped = gdf.groupby(prop_overlap)
+    gdf_grouped = gdf.groupby(split_by)
     gdfs = [gdf_grouped.get_group(x) for x in gdf_grouped.groups]
 
     to_return = {
@@ -309,12 +309,12 @@ def deduplicate(
     return to_return
 
 
-def plot_duplicates(deduplicate_output, prop_overlap):
+def plot_duplicates(deduplicate_output, split_by):
     """
     Plot the output of deduplication (useful for testing & choosing thresholds)
     """
     do = deduplicate_output
-    ax = do['keep'].plot(column=prop_overlap, cmap='Dark2', alpha=0.6)
+    ax = do['keep'].plot(column=split_by, cmap='Dark2', alpha=0.6)
     do['remove'].plot(
         ax=ax,
         facecolor='none',
@@ -328,3 +328,96 @@ def plot_duplicates(deduplicate_output, prop_overlap):
         alpha=0.6,
         linewidth=0.5)
     return ax
+
+
+def deduplicate_by_footprint(
+    gdf,
+    split_by,
+    footprints,
+    rank,
+    return_intersections=False
+):
+    """
+
+    Remove polygons that occur within an area where associated footprints
+    overlap. This method can be used to remove polygons that originate from
+    different overlapping files.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        The GeoDataFrame to deduplicate
+    split_by : str
+        The name of the property in the GeoDataFrame that links the polygon to
+        the footprint, e.g. 'source_file'. This property will be used to divide
+        the GeoDataFrame into groups. The groups with the preferred polygons
+        will be identified using the `rank` parameter. Polygons from less
+        preferred groups will be removed when they occur within an area where
+        footprints overlap. Every pairwise combination of unique values for
+        this property will be compared, so ideally, this property should not
+        have too many unique values, or the deduplication will be very slow.
+    footprints : dict
+        A dictionairy that maps the unique values of `split_by` to a
+        GeoDataFrame of the footprint of the associated file.
+    rank : list of str
+        A list the unique values of the `split_by` property in the order of
+        preference (e.g. a list of source filenames).
+    return_intersections : bool, optional
+        If true, the polygons that represent the intersections between
+        footprints will be returned. Default is False.
+    """
+    # Method:
+    gdf_grouped = gdf.groupby(split_by)
+    gdf_dict = {}
+    for g in gdf_grouped.groups:
+        gdf_dict[g] = gdf_grouped.get_group(g)
+    names = list(gdf_grouped.groups)
+
+    removed = []
+    intersections = []
+
+    # Find overlapping section of footprints
+    # For every pairwise combination of two (subsetted) GDFs
+    for pair in itertools.combinations(names, 2):
+        name1 = pair[0]
+        name2 = pair[1]
+        footprint1 = footprints[name1]
+        footprint2 = footprints[name2]
+        # Get overlap between two footprints
+        overlap = gpd.GeoDataFrame(
+            geometry=footprint1.intersection(footprint2))
+        overlap['overlap'] = True
+        intersections.append(overlap)
+
+        # Identify which GDF is not preferred in the pair. This is the GDF that
+        # we will remove polygons from.
+        least_preferred = name1
+        if rank.index(name2) > rank.index(name1):
+            least_preferred = name2
+        to_reduce = gdf_dict.get(least_preferred)
+
+        # Find polygons in the non-preferred GDF that intersect with overlap
+        # and remove them.
+        overlap_boolean = to_reduce.sjoin(overlap, how='left')['overlap']
+        overlap_boolean = overlap_boolean.fillna(False)
+        reduced = to_reduce[~overlap_boolean]
+
+        # Update the dictionary with the reduced GDF
+        gdf_dict[least_preferred] = reduced
+
+        # Save the removed polygons
+        removed.append(to_reduce[overlap_boolean])
+
+    # Recombine the GDFs from the dictionary
+    keep = pd.concat(gdf_dict.values())
+    removed = pd.concat(removed)
+
+    to_return = {
+        'keep': keep,
+        'removed': removed
+    }
+
+    if return_intersections:
+        to_return['intersections'] = pd.concat(intersections)
+
+    return to_return

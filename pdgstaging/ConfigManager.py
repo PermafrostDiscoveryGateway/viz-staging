@@ -841,7 +841,7 @@ class ConfigManager():
             Return input options for the pdgstaging.deduplication method
         """
         return {
-            'prop_overlap': self.polygon_prop('filename'),
+            'split_by': self.polygon_prop('filename'),
             'prop_area': self.polygon_prop('area'),
             'prop_centroid_x': self.polygon_prop('centroid_x'),
             'prop_centroid_y': self.polygon_prop('centroid_y'),

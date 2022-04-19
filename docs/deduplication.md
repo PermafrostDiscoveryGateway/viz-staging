@@ -121,7 +121,7 @@ gdf['Centroid_y'] = gdf1.centroid.y
 # Deduplicate
 output = deduplicate(
     gdf,
-    prop_overlap='source_file',
+    split_by='source_file',
     prop_area='Area',
     prop_centroid_x='Centroid_x',
     prop_centroid_y='Centroid_y',
