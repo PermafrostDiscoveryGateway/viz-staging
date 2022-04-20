@@ -1,22 +1,68 @@
 # Deduplication
 
-If input files contain overlapping regions with the same features, then the resulting tiles will contain duplicate polygons. Tiles may be deduplicated using the following configuration options:
+If input files contain overlapping regions with the same features, then the resulting tiles will contain duplicate polygons. Tiles may be deduplicated using one of two methods:
 
-* `deduplicate` : (list of str or None)
-                    When to deduplicate the input data. Options are 'staging',
-                    'raster', '3dtiles', or None to skip deduplication.
+1. Deduplication by source file footprint overlap ("footprints")
+2. Deduplication by neighbor proximity ("neighbor")
 
-* `deduplicate_keep_rules` : (list of tuple: [])
-    Rules that define which of the polygons to keep when two or
-    more are duplicates. A list of tuples of the form
-    (property, operator). The property is the property that
-    exists in the geodataframe to use for the comparison. The
-    operator is either 'larger' or 'smaller'. If the rule is
-    'larger', the polygon with the largest value for the
-    property will be kept. If the rule is 'smaller', the
-    polygon with the smallest value for the property will be
-    kept. When two properties are equal, then the next property
-    in the list will be checked.
+### Example
+
+Here are two overlapping files with thick lines representing the boundaries of those files:
+
+![input files with boundary lines](images/tiles_input-with-footprint.png)
+
+Without any deduplication, here is what the resulting tiles will look like:
+
+![tiles without any deduplication](images/tiles_not_deduped.png)
+
+Deduplicating with the **footprints** method removes all polygons from one file where the two files overlap:
+
+![tiles deduplicated by the footprints method](images/tiles_deduped_footprint.png)
+
+Deduplicating with the **neighbor** method leaves polygons from both files in the area where two files overlap,
+but removes polygons from one file where they overlap are are nearby a polygon from another file:
+
+![tiles deduplicated by the neighbor method](images/tiles_deduped_neighbor.png)
+
+## Common options
+
+Regardless of which method is selected, the following options should be set in the configuration:
+
+* `deduplicate_at` : (list of str or None)
+    When to deduplicate the input data. Options are 'staging',
+    'raster', '3dtiles', or None to skip deduplication.
+
+* `deduplicate_method` : Set to `neighbor` or `footprints`
+
+* `deduplicate_keep_rules` : (list of tuple: []) Rules that determine which
+    polygons should be kept and which should be removed when they are
+    considered duplicates. The keep rules are provided as a list of tuples in
+    the format (property, operator), where each tuple is a rule. The property a
+    property that exists in the footprint file (in the case of 'footprint'
+    method) or in the input data (in the case of the 'neighbor' method) that
+    can be used to compare polygons/footprints. The operator can be set to
+    'larger' or 'smaller'. If the rule is 'larger', the polygon with the
+    largest value for the property will be kept, and vice versa for smaller.
+    When two properties are equal, then the next property in the list will be
+    checked.
+
+# Footprint method
+
+The footprint method removes polygons that originate from one source file in
+areas where two source files overlap. To use this method, each input vector
+file must have a matching footprint vector file with the same name, located in
+the directory specified by `dir_footprints`. Each footprint file should contain
+one or more polygons that specify the boundary of the associate input file. The
+footprint polygons must also have a property that can be used to rank the files
+in order of preference, such that only polygons from the preferred file are
+kept in areas of overlap. (This property should be specified in `keep_rules`).
+
+# Neighbor method
+
+The neighbor method removes nearby or overlapping polygons when they come from
+a different source file.
+
+The following configuration options are available for this method:
 
 * `deduplicate_overlap_tolerance` : (float, optional)
     The minimum proportion of a polygon's area that must be
@@ -119,7 +165,7 @@ gdf['Centroid_x'] = gdf1.centroid.x
 gdf['Centroid_y'] = gdf1.centroid.y
 
 # Deduplicate
-output = deduplicate(
+output = deduplicate_neighbors(
     gdf,
     split_by='source_file',
     prop_area='Area',
