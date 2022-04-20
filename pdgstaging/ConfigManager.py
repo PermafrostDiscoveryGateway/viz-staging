@@ -1,4 +1,6 @@
 import json
+import os
+from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
 
 
 class ConfigManager():
@@ -25,6 +27,16 @@ class ConfigManager():
                 The directory to save GeoTIFF files to.
             - dir_web_tiles : str
                 The directory to save web tiles to.
+            - dir_footprints: str
+                The directory to read footprint files from. Required only if
+                the 'deduplicate_method' is 'footprints'. A footprint is a
+                vector file with a polygon that defines the boundary of an
+                associated input file. There should be one footprint file for
+                each input file, with the same name as the input file.
+                Polygons in footprint files must also have at least one
+                property that can be used to rank files according to
+                preference. Polygons from lower-ranked files will be removed
+                where footprints overlap.
             - filename_staging_summary : str
                 The path and filename to save a CSV file that summarizes the
                 tiled files that were created during the staging process.
@@ -37,6 +49,8 @@ class ConfigManager():
                 or '.gpkg'.
             - ext_web_tiles : str
                 The file extension to use for web tiles, e.g. '.png' or '.jpg'.
+            - ext_footprints: str
+                The file extension of footprint files, e.g. '.shp' or '.gpkg'.
 
         - Properties. Names of properties added to polygons created during
           processing. These names cannot already exist in the input data. It is
@@ -168,46 +182,65 @@ class ConfigManager():
 
             - Deduplication options. Deduplicate input that comes from multiple
               source files.
-                - deduplicate : list of str or None
+                - deduplicate_at : list of str or None
                     When to deduplicate the input data. Options are 'staging',
                     'raster', '3dtiles', or None to skip deduplication.
+                - deduplicate_method : str or None
+                    The method to use for deduplication. Options are
+                    'neighbor', 'footprints', or None. If None, then no
+                    deduplication will be performed. If 'neighbor', then the
+                    input data will be deduplicated by removing nearby or
+                    overlapping polygons, as determined by the
+                    'deduplicate_centroid_tolerance' and
+                    'deduplicate_overlap_tolerance' options. If 'footprints',
+                    then the input data will be deduplicated by removing
+                    polygons that are contained within sections of overlapping
+                    file footprints. This method requires footprint vector
+                    files that have the same name as the input vector files,
+                    stored in a directory specified by the 'dir_footprints'
+                    option.
                 - deduplicate_keep_rules : list of tuple: []
-                    Rules that define which of the polygons to keep when two or
-                    more are duplicates. A list of tuples of the form
-                    (property, operator). The property is the property that
-                    exists in the geodataframe to use for the comparison. The
-                    operator is either 'larger' or 'smaller'. If the rule is
-                    'larger', the polygon with the largest value for the
-                    property will be kept. If the rule is 'smaller', the
-                    polygon with the smallest value for the property will be
-                    kept. When two properties are equal, then the next property
-                    in the list will be checked.
+                    Required for both deduplication methods. Rules that define
+                    which of the polygons to keep when two or more are
+                    duplicates. A list of tuples of the form (property,
+                    operator). The property is the name of the property in the
+                    input file (in the case of neighbor deduplication) or in
+                    the footprint file (in the case of footprint
+                    deduplication). The operator is the comparison operator to
+                    use. If the operator is 'larger', the polygon with the
+                    largest value for the property will be kept, and vice versa
+                    for 'smaller. When two properties are equal, then the next
+                    property in the list will be checked.
                 - deduplicate_overlap_tolerance : float, optional
-                    The minimum proportion of a polygon's area that must be
-                    overlapped by another polygon to be considered a duplicate.
-                    Default is 0.5. Set to None to ignore overlap proportions
-                    when comparing polygons, and set a centroid threshold
-                    instead. Note that both an overlap_tolerance AND a
+                    For the 'neighbor' deduplication method only. The minimum
+                    proportion of a polygon's area that must be overlapped by
+                    another polygon to be considered a duplicate. Default is
+                    0.5. Set to None to ignore overlap proportions when
+                    comparing polygons, and set a centroid threshold instead.
+                    Note that both an overlap_tolerance AND a
                     centroid_tolerance can be used.
                 - deduplicate_overlap_both : bool, optional
-                    If True, then the overlap_tolerance proportion must be True
-                    for both of the intersecting polygons to be considered a
-                    duplicate. If False, then the overlap_tolerance proportion
-                    must be True for only one of the intersecting polygons to
-                    be considered a duplicate. Default is True.
+                    For the 'neighbor' deduplication method only. If True, then
+                    the overlap_tolerance proportion must be True for both of
+                    the intersecting polygons to be considered a duplicate. If
+                    False, then the overlap_tolerance proportion must be True
+                    for only one of the intersecting polygons to be considered
+                    a duplicate. Default is True.
                 - deduplicate_centroid_tolerance : float, optional
-                    The maximum distance between the centroids of two polygons
-                    to be considered a duplicate. Default is None. Set to None
-                    to ignore centroid distances when comparing polygons, and
-                    set an overlap threshold instead. Note that both an
+                    For the 'neighbor' deduplication method only. The maximum
+                    distance between the centroids of two polygons to be
+                    considered a duplicate. Default is None. Set to None to
+                    ignore centroid distances when comparing polygons, and set
+                    an overlap threshold instead. Note that both an
                     overlap_tolerance AND a centroid_tolerance can be used. The
                     unit of the distance is the unit of the distance_crs
                     property (e.g. meters for EPSG:3857), or the unit of the
                     GeoDataFrame if distance_crs is None.
                 - deduplicate_distance_crs : str, optional
-                    The CRS to use for the centroid distance calculation.
-                    Default is EPSG:3857. Centroid points will be re-projected
-                    to this CRS before calculating the distance between them.
+                    For the 'neighbor' deduplication method only. The CRS to
+                    use for the centroid distance calculation. Default is
+                    EPSG:3857. Centroid points will be re-projected to this CRS
+                    before calculating the distance between them.
                     centroid_tolerance will use the units of this CRS. Set to
                     None to skip the re-projection and use the CRS of the
                     GeoDataFrame.
@@ -258,11 +291,13 @@ class ConfigManager():
         'dir_web_tiles': 'web_tiles',
         'dir_staged': 'staged',
         'dir_input': 'input',
+        'dir_footprints': 'footprints',
         'filename_staging_summary': 'staging_summary.csv',
         # File types for input and output
         'ext_web_tiles': '.png',
         'ext_input': '.shp',
         'ext_staged': '.gpkg',
+        'ext_footprints': '.gpkg',
         # Names of properties added to polygons, created during processing
         'prop_centroid_x': 'staging_centroid_x',
         'prop_centroid_y': 'staging_centroid_y',
@@ -300,7 +335,8 @@ class ConfigManager():
             }
         ],
         # Deduplication options. Do not deduplicate by default.
-        'deduplicate': None,
+        'deduplicate_at': None,
+        'deduplicate_method': None,
         'deduplicate_keep_rules': [],
         'deduplicate_overlap_tolerance': 0.5,
         'deduplicate_overlap_both': True,
@@ -836,22 +872,50 @@ class ConfigManager():
             }
         }
 
-    def get_deduplication_config(self):
+    def get_deduplication_config(self, gdf=None):
         """
             Return input options for the pdgstaging.deduplication method
+
+            Parameters
+            ----------
+            gdf : geopandas.GeoDataFrame
+                The GeoDataFrame to deduplicate. This is required if the
+                deduplication method has been set to 'footprints'. The GDF is
+                used to identify which footprint files to open and how to rank
+                them.
         """
-        return {
-            'split_by': self.polygon_prop('filename'),
-            'prop_area': self.polygon_prop('area'),
-            'prop_centroid_x': self.polygon_prop('centroid_x'),
-            'prop_centroid_y': self.polygon_prop('centroid_y'),
-            'keep_rules': self.get('deduplicate_keep_rules'),
-            'overlap_tolerance': self.get('deduplicate_overlap_tolerance'),
-            'overlap_both': self.get('deduplicate_overlap_both'),
-            'centroid_tolerance': self.get('deduplicate_centroid_tolerance'),
-            'distance_crs': self.get('deduplicate_distance_crs'),
-            'return_intersections': False
-        }
+        method = self.get('deduplicate_method')
+        file_prop = self.polygon_prop('filename')
+        if(method == 'neighbor'):
+            return {
+                'split_by': file_prop,
+                'prop_area': self.polygon_prop('area'),
+                'prop_centroid_x': self.polygon_prop('centroid_x'),
+                'prop_centroid_y': self.polygon_prop('centroid_y'),
+                'keep_rules': self.get('deduplicate_keep_rules'),
+                'overlap_tolerance': self.get('deduplicate_overlap_tolerance'),
+                'overlap_both': self.get('deduplicate_overlap_both'),
+                'centroid_tolerance': self.get(
+                    'deduplicate_centroid_tolerance'),
+                'distance_crs': self.get('deduplicate_distance_crs'),
+                'return_intersections': False
+            }
+        if(method == 'footprints'):
+
+            fp_dir = self.get('dir_footprints')
+            fp_ext = self.get('ext_footprints')
+            input_ext = self.get('ext_input')
+            files = gdf[file_prop].unique().tolist()
+            footprints = {}
+            for f in files:
+                f_base = os.path.basename(f).removesuffix(input_ext)
+                footprints[f] = os.path.join(fp_dir, f_base + fp_ext)
+            return {
+                'split_by': file_prop,
+                'footprints': footprints,
+                'keep_rules': self.get('deduplicate_keep_rules')
+            }
+        return None
 
     def deduplicate_at(self, step):
         """
@@ -868,11 +932,27 @@ class ConfigManager():
             bool
                 Whether deduplication should occur at the given step.
         """
-        dedup = self.get('deduplicate')
+        dedup = self.get('deduplicate_at')
         if isinstance(dedup, list) and step in dedup:
             return True
         else:
             return False
+
+    def get_deduplication_method(self):
+        """
+            Return the deduplication method
+
+            Returns
+            -------
+            str
+                The deduplication method.
+        """
+        method = self.get('deduplicate_method')
+        if(method == 'neighbor'):
+            return deduplicate_neighbors
+        if(method == 'footprints'):
+            return deduplicate_by_footprint
+        return None
 
     def update_ranges(self, new_ranges):
         """

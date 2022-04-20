@@ -5,7 +5,32 @@ import uuid
 import itertools
 
 
-def deduplicate(
+def keep_rules_to_sort_order(keep_rules):
+    """
+    Convert a list of keep rules to the format required for the pandas
+    sort_values function.
+
+    Parameters
+    ----------
+    keep_rules : list
+        A list of tuples in the form (property, operator), as required for the
+        deduplication methods.
+
+    Returns
+    -------
+    tuple
+        The first element in the tuple is the list of properties to sort by,
+        and the second element is the list of booleans indicating whether the
+        corresponding property should be sorted in ascending or descending
+        order. To be used for the `by` and `ascending` arguments of the pandas
+        sort_values function.
+    """
+    sort_props = [x[0] for x in keep_rules]
+    sort_order = [x[1] == 'smaller' for x in keep_rules]
+    return sort_props, sort_order
+
+
+def deduplicate_neighbors(
     gdf,
     split_by=None,
     prop_area=None,
@@ -72,10 +97,10 @@ def deduplicate(
         None, the centroid will be calculated.
     keep_rules : list, optional
         Rules that define which of the polygons to keep when two or more are
-        duplicates. A list of tuples of the form (property, operator). The
-        property is the property that exists in the geodataframe to use for the
+        duplicates. A list of tuples of the form (property, operator), where
+        property is the name of a property in the GDF to use for the
         comparison. The operator is either 'larger' or 'smaller'. If the rule
-        is 'larger', the polygon with the largest value for the property will
+        is 'larger', the polygons with the largest value for the property will
         be kept. If the rule is 'smaller', the polygon with the smallest value
         for the property will be kept. When two properties are equal, then the
         next property in the list will be checked.
@@ -167,8 +192,7 @@ def deduplicate(
             gdf[prop_area] = gdf.area
 
     # Organize keep rules for pandas sort_values
-    sort_props = [x[0] for x in keep_rules]
-    sort_order = [x[1] == 'smaller' for x in keep_rules]
+    sort_props, sort_order = keep_rules_to_sort_order(keep_rules)
 
     # Remove all unnecessary columns
     working_cols = [
@@ -188,7 +212,7 @@ def deduplicate(
     to_return = {
         'keep': None,
         'intersections': None,
-        'remove': None
+        'removed': None
     }
 
     if len(gdfs) < 2:
@@ -303,38 +327,17 @@ def deduplicate(
     # Remove the prop_id column, no longer needed
     gdf_original.drop([prop_id], axis=1, inplace=True)
 
-    to_return['remove'] = gdf_original[remove]
+    to_return['removed'] = gdf_original[remove]
     to_return['keep'] = gdf_original[~remove]
 
     return to_return
-
-
-def plot_duplicates(deduplicate_output, split_by):
-    """
-    Plot the output of deduplication (useful for testing & choosing thresholds)
-    """
-    do = deduplicate_output
-    ax = do['keep'].plot(column=split_by, cmap='Dark2', alpha=0.6)
-    do['remove'].plot(
-        ax=ax,
-        facecolor='none',
-        edgecolor='k',
-        alpha=0.6,
-        linewidth=0.5)
-    do['intersections'].plot(
-        ax=ax,
-        facecolor='none',
-        edgecolor='red',
-        alpha=0.6,
-        linewidth=0.5)
-    return ax
 
 
 def deduplicate_by_footprint(
     gdf,
     split_by,
     footprints,
-    rank,
+    keep_rules=[],
     return_intersections=False
 ):
     """
@@ -358,20 +361,76 @@ def deduplicate_by_footprint(
         have too many unique values, or the deduplication will be very slow.
     footprints : dict
         A dictionairy that maps the unique values of `split_by` to a
-        GeoDataFrame of the footprint of the associated file.
-    rank : list of str
-        A list the unique values of the `split_by` property in the order of
-        preference (e.g. a list of source filenames).
+        GeoDataFrame of or path (string) to the footprint of the associated
+        file
+    keep_rules : str
+        One or more rules that define which footprint is preferred. Polygons
+        that occur in an area where footprints overlap will be removed if they
+        are not associated with the preferred footprint. Keep_rules are given
+        as a list of tuples in the form (property, operator). The property is
+        the name of a property in the footprint file. The operator is either
+        'larger' or 'smaller'. If the rule is 'larger', then polygons from the
+        footprint with the largest value for the property will be kept, and
+        vice versa for smaller. When two properties are equal, then the next
+        property in the list will be checked.
     return_intersections : bool, optional
         If true, the polygons that represent the intersections between
         footprints will be returned. Default is False.
+
+    Returns
+    -------
+    dict
+        A dictionary with the following keys:
+
+        - 'keep' : GeoDataFrame
+            The deduplicated GeoDataFrame.
+        - 'removed' : GeoDataFrame
+            The GeoDataFrame with the removed features.
+        - 'intersections' : GeoDataFrame
+            The GeoDataFrame with the footprint intersections.
     """
-    # Method:
+
+    gdf = gdf.copy()
+
+    # To make sure footprints are in the correct CRS
+    crs = gdf.crs
+
+    # Get the unique values of the split_by property. Divide the GeoDataFrame.
     gdf_grouped = gdf.groupby(split_by)
     gdf_dict = {}
     for g in gdf_grouped.groups:
         gdf_dict[g] = gdf_grouped.get_group(g)
     names = list(gdf_grouped.groups)
+
+    if(len(names) == 1):
+        # If there is only one group, then there is nothing to deduplicate
+        return {
+            'keep': gdf,
+            'removed': None,
+            'intersections': None
+        }
+
+    # If the values of footprints dict are strings, then load the footprints
+    if all([isinstance(v, str) for v in footprints.values()]):
+        for name, path in footprints.items():
+            footprints[name] = gpd.read_file(path)
+
+    # Add a column to the GeoDataFrame that contains the filename
+    prop_filename_temp = 'filename_' + uuid.uuid4().hex
+    for name, fp_gdf in footprints.items():
+        fp_gdf[prop_filename_temp] = name
+        fp_gdf.to_crs(crs, inplace=True)
+
+    # Rank the footprints according to the keep_rules
+    footprints_concat = gpd.GeoDataFrame(pd.concat(
+        footprints.values(), ignore_index=True))
+
+    sort_props, sort_order = keep_rules_to_sort_order(keep_rules)
+    footprints_concat.sort_values(
+        by=sort_props,
+        ascending=sort_order,
+        inplace=True)
+    rank = footprints_concat[prop_filename_temp].tolist()
 
     removed = []
     intersections = []
@@ -383,10 +442,12 @@ def deduplicate_by_footprint(
         name2 = pair[1]
         footprint1 = footprints[name1]
         footprint2 = footprints[name2]
+
         # Get overlap between two footprints
         overlap = gpd.GeoDataFrame(
             geometry=footprint1.intersection(footprint2))
         overlap['overlap'] = True
+        overlap.to_crs(crs, inplace=True)
         intersections.append(overlap)
 
         # Identify which GDF is not preferred in the pair. This is the GDF that
@@ -421,3 +482,24 @@ def deduplicate_by_footprint(
         to_return['intersections'] = pd.concat(intersections)
 
     return to_return
+
+
+def plot_duplicates(deduplicate_output, split_by):
+    """
+    Plot the output of deduplication (useful for testing & choosing thresholds)
+    """
+    do = deduplicate_output
+    ax = do['keep'].plot(column=split_by, cmap='Dark2', alpha=0.6)
+    do['removed'].plot(
+        ax=ax,
+        facecolor='none',
+        edgecolor='k',
+        alpha=0.6,
+        linewidth=0.5)
+    do['intersections'].plot(
+        ax=ax,
+        facecolor='none',
+        edgecolor='red',
+        alpha=0.6,
+        linewidth=0.5)
+    return ax

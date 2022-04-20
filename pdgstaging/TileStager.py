@@ -11,7 +11,6 @@ from shapely.geometry import box
 
 from . import ConfigManager
 from . import TilePathManager
-from .Deduplicator import deduplicate
 
 
 logger = logging.getLogger(__name__)
@@ -376,13 +375,15 @@ class TileStager():
             mode = 'w'
 
             if os.path.isfile(tile_path):
-                # If the file exists and config is set to deduplciate during
+                # If the file exists and config is set to deduplicate during
                 # staging, then open the file, append the new data, and
                 # deduplicate. Overwrite existing file.
-                if(self.config.deduplicate_at('staging')):
-                    gdf = self.combine_and_deduplicate(gdf, tile_path)
-                # If the file exists and config is set to deduplciate during
-                # processing, then just append the new data to the existing
+                dedup_at_staging = self.config.deduplicate_at('staging')
+                dedup_method = self.config.get_deduplication_method()
+                if dedup_at_staging and (dedup_method is not None):
+                    data = self.combine_and_deduplicate(data, tile_path)
+                # If the file exists and config is not set to deduplicate
+                # during staging, then just append the new data to the existing
                 # file.
                 else:
                     mode = 'a'
@@ -421,16 +422,18 @@ class TileStager():
 
         dedup_start_time = datetime.now()
 
+        dedup_method = self.config.get_deduplication_method()
         existing_gdf = gpd.read_file(tile_path)
         gdf = pd.concat([gdf, existing_gdf])
+        dedup_config = self.config.get_deduplication_config(gdf)
+        if(dedup_method is None):
+            return gdf
 
         logger.info(
             f'Starting deduplication in tile {tile_path} with {len(gdf)} '
             'polygons.'
         )
-
-        dedup = deduplicate(
-            gdf, **self.config.get_deduplication_config())
+        dedup = dedup_method(gdf, **dedup_config)
         gdf = dedup['keep']
 
         logger.info(

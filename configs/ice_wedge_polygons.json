@@ -1,5 +1,6 @@
 {
   "dir_input": "",
+  "dir_footprints": "",
   "ext_input": ".shp",
   "simplify_tolerance": 0.00001,
   "tms_id": "WorldCRS84Quad",
@@ -26,10 +27,7 @@
           "palette": ["rgb(102 51 153 / 0.1)", "lch(85% 100 85)"]
       }
   ],
-  "deduplicate": ["raster", "3dtiles"],
-  "deduplicate_keep_rules": [["Date", "larger"], ["Time", "larger"]],
-  "deduplicate_overlap_tolerance": 0.6,
-  "deduplicate_overlap_both": true,
-  "deduplicate_centroid_tolerance": 5,
-  "deduplicate_distance_crs": "EPSG:3413"
+  "deduplicate_at": ["raster", "3dtiles"],
+  "deduplicate_method": "footprints",
+  "deduplicate_keep_rules": [["acq_time", "larger"]]
 }
