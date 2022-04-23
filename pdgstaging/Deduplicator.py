@@ -3,6 +3,7 @@ import geopandas as gpd
 import pandas as pd
 import uuid
 import itertools
+import warnings
 
 
 def keep_rules_to_sort_order(keep_rules):
@@ -245,7 +246,11 @@ def deduplicate_neighbors(
         if overlap_tolerance is not None:
             # Filter out any intersections that do not meet the threshold %
             # overlap Get the area of the intersection
-            duplicates[prop_int_area] = duplicates.area
+            # Catch the UserWarning that is raised if area is calculated
+            # using the a non-projected coordinate system.
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', UserWarning)
+                duplicates[prop_int_area] = duplicates.area
             duplicates[prop_int_area + '_1'] = duplicates[prop_int_area] / \
                 duplicates[prop_area + '_1']
             duplicates[prop_int_area + '_2'] = duplicates[prop_int_area] / \

@@ -101,8 +101,8 @@ class TileStager():
         """
         gdf = self.get_data(path)
         if (gdf is not None) and (len(gdf) > 0):
-            gdf = self.set_crs(gdf)
             gdf = self.simplify_geoms(gdf)
+            gdf = self.set_crs(gdf)
             gdf = self.add_properties(gdf, path)
             self.save_tiles(gdf)
         else:

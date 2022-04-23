@@ -32,14 +32,27 @@ class ConfigManager():
                 the 'deduplicate_method' is 'footprints'. A footprint is a
                 vector file with a polygon that defines the boundary of an
                 associated input file. There should be one footprint file for
-                each input file, with the same name as the input file.
-                Polygons in footprint files must also have at least one
-                property that can be used to rank files according to
-                preference. Polygons from lower-ranked files will be removed
-                where footprints overlap.
+                each input file, with the same name as the input file. Polygons
+                in footprint files must also have at least one property that
+                can be used to rank files according to preference. Polygons
+                from lower-ranked files will be removed where footprints
+                overlap.
             - filename_staging_summary : str
                 The path and filename to save a CSV file that summarizes the
                 tiled files that were created during the staging process.
+            - filename_rasterization_events : str
+                The path and filename to save a CSV file that summarizes the
+                rasterization events that happened during the rasterization
+                process (in the viz-rasterize step).
+            - filename_rasters_summary : str
+                The path and filename to save a CSV file that summarizes the
+                data from the rasters that were created during the
+                rasterization process.
+            - filename_config : str
+                The path to the config file. This property will be set
+                automatically if the config is passed as a path string. When
+                the config is updated, it will be saved to this filename, but
+                with a suffix indicating that it is an updated.
 
         - Filetypes for input and output data.
             - ext_input : str
@@ -185,7 +198,7 @@ class ConfigManager():
                 - deduplicate_at : list of str or None
                     When to deduplicate the input data. Options are 'staging',
                     'raster', '3dtiles', or None to skip deduplication.
-                - deduplicate_method : str or None
+                - deduplicate_method : 'neighbor', 'footprints', or None
                     The method to use for deduplication. Options are
                     'neighbor', 'footprints', or None. If None, then no
                     deduplication will be performed. If 'neighbor', then the
@@ -293,6 +306,9 @@ class ConfigManager():
         'dir_input': 'input',
         'dir_footprints': 'footprints',
         'filename_staging_summary': 'staging_summary.csv',
+        'filename_rasterization_events': 'rasterization_events.csv',
+        'filename_rasters_summary': 'rasters_summary.csv',
+        'filename_config': 'config.json',
         # File types for input and output
         'ext_web_tiles': '.png',
         'ext_input': '.shp',
@@ -352,11 +368,12 @@ class ConfigManager():
                 The tiling config object or a path to a JSON file containing
                 the tiling config object.
         """
-        if isinstance(config, str):
-            config = self.read(config)
 
-        if dict is None:
-            config = self.defaults
+        if isinstance(config, str):
+            path = config
+            config = self.read(path)
+            if config.get('filename_config') is None:
+                config['filename_config'] = path
 
         if not isinstance(config, dict):
             raise ValueError('config must be a dict or a path to a JSON file')
@@ -374,15 +391,21 @@ class ConfigManager():
                 prop_name = k.removeprefix('prop_')
                 self.props[prop_name] = self.config[k]
 
-    def write(self, filename):
+    def write(self, updated=False):
         """
             Save the configuration to a JSON file.
 
             Parameters
             ----------
-            filename : str
-                The file to save to.
+            updated : boolean
+                If True, then a suffix will be added to the filename to
+                indicate that it is an updated version.
         """
+        filename = self.get('filename_config')
+        if(updated):
+            filename = "{0}_{2}{1}".format(
+                *os.path.splitext(filename), '_updated')
+        # TODO: Don't save default values
         with open(filename, 'w') as f:
             json.dump(self.config, f, indent=4)
 
@@ -791,10 +814,14 @@ class ConfigManager():
 
     def get_raster_config(self):
         """
-            Return a list of statistic configs for the
-            Raster.from_vector method. Example of returned config
+            Return a list of options to pass to the Raster.from_vector method
+            in the pdgraster (viz-raster) package. Example of returned config
             looks like:
-                [
+            {
+                'centroid_properties': ('staging_centroid_x',
+                    'staging_centroid_y'),
+                'shape': (256, 256),
+                'stats': [
                     {
                         'name': 'polygon_count',
                         'weight_by': 'count',
@@ -807,24 +834,36 @@ class ConfigManager():
                         'aggregation_method': 'sum'
                     }
                 ]
+            }
 
             Returns
             -------
-            list
-                A list of dicts containing the configuration for each statistic
-                to use in the Raster.raster_from_vector method.
+            dict
+                A dictionairy containing the configuration for shape,
+                centroid_properties, and stats for Raster.from_vector method.
         """
-        raster_config_keys = (
+
+        cent_x = self.polygon_prop('centroid_x')
+        cent_y = self.polygon_prop('centroid_y')
+
+        stats_config_keys = (
             'name',
             'weight_by',
             'property',
             'aggregation_method')
-        config = []
+        stats_config = []
         for stat_config in self.config['statistics']:
-            config.append(
-                {k: stat_config[k] for k in raster_config_keys}
+            stats_config.append(
+                {k: stat_config[k] for k in stats_config_keys}
             )
-        return config
+
+        raster_config = {
+            'centroid_properties': (cent_x, cent_y),
+            'shape': self.get('tile_size'),
+            'stats': stats_config
+        }
+
+        return raster_config
 
     def get_path_manager_config(self):
         """
@@ -954,7 +993,7 @@ class ConfigManager():
             return deduplicate_by_footprint
         return None
 
-    def update_ranges(self, new_ranges):
+    def update_ranges(self, new_ranges, save_config=True):
         """
             Update the value ranges for the statistics, only if there is a min
             or max missing for a given z-level. A min or max is deemed to be
@@ -971,6 +1010,9 @@ class ConfigManager():
                         'polygon_count': {
                             '0': (0.8, None), '1': (0, 5),
                     } ...
+
+            save_config : bool
+                Whether to save the updated config to the config file.
         """
         for stat, zs in new_ranges.items():
             for z, val_range in zs.items():
@@ -978,6 +1020,9 @@ class ConfigManager():
                     self.set_min(val_range[0], stat, z)
                 if(self.max_missing(stat, z, True)):
                     self.set_max(val_range[1], stat, z)
+
+        if(save_config):
+            self.write(updated=True)
 
     def list_updates(self):
         """

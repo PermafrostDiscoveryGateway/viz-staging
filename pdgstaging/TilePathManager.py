@@ -192,7 +192,7 @@ class TilePathManager():
         except KeyError:
             return None
 
-    def get_filenames_from_dir(self, base_dir):
+    def get_filenames_from_dir(self, base_dir, z=None):
         """
             Given the name of a base directory that has been saved to this Path
             Manager, get all of the files within that directory that have the
@@ -202,6 +202,10 @@ class TilePathManager():
             ----------
             base_dir : str
                 The name of the base directory.
+
+            z : int, optional
+                The zoom level to get the files for. If not provided, files
+                from all zoom levels will be returned.
 
             Returns
             -------
@@ -219,7 +223,13 @@ class TilePathManager():
         for root, dirs, files in os.walk(dir_path):
             for file in files:
                 if file.endswith(ext):
-                    paths.append(os.path.join(root, file))
+                    fullpath = os.path.join(root, file)
+                    if z is not None:
+                        tile = self.dict_from_path(fullpath)
+                        if tile['z'] == z:
+                            paths.append(fullpath)
+                    else:
+                        paths.append(fullpath)
 
         return paths
 

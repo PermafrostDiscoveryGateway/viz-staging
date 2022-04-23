@@ -20,7 +20,7 @@ Deduplicating with the **footprints** method removes all polygons from one file 
 ![tiles deduplicated by the footprints method](images/tiles_deduped_footprint.png)
 
 Deduplicating with the **neighbor** method leaves polygons from both files in the area where two files overlap,
-but removes polygons from one file where they overlap are are nearby a polygon from another file:
+but removes polygons from one file where they overlap or are nearby a polygon from another file:
 
 ![tiles deduplicated by the neighbor method](images/tiles_deduped_neighbor.png)
 
@@ -37,11 +37,11 @@ Regardless of which method is selected, the following options should be set in t
 * `deduplicate_keep_rules` : (list of tuple: []) Rules that determine which
     polygons should be kept and which should be removed when they are
     considered duplicates. The keep rules are provided as a list of tuples in
-    the format (property, operator), where each tuple is a rule. The property a
+    the format `(property, operator)`, where each tuple is a rule. `property` is a
     property that exists in the footprint file (in the case of 'footprint'
     method) or in the input data (in the case of the 'neighbor' method) that
-    can be used to compare polygons/footprints. The operator can be set to
-    'larger' or 'smaller'. If the rule is 'larger', the polygon with the
+    can be used to compare polygons/footprints. `operator` can be set to
+    'larger' or 'smaller'. If the rule is 'larger', then polygon with the
     largest value for the property will be kept, and vice versa for smaller.
     When two properties are equal, then the next property in the list will be
     checked.
