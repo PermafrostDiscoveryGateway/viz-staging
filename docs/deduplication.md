@@ -1,9 +1,19 @@
 # Deduplication
 
-If input files contain overlapping regions with the same features, then the resulting tiles will contain duplicate polygons. Tiles may be deduplicated using one of two methods:
+If input files contain overlapping regions with the same features, then the
+resulting tiles will contain duplicate polygons. When polygons are duplicated,
+then the resulting raster & 3d tile products will tend to over-count polygons
+in the areas of overlap.
+
+Tiles may be deduplicated using one of two methods:
 
 1. Deduplication by source file footprint overlap ("footprints")
 2. Deduplication by neighbor proximity ("neighbor")
+
+Neither method is perfect: The "footprints" method will fairly evenly sample
+all areas, but will tend to under-count and underestimate the size of polygons
+at file boundaries. The "neighbor" method may over-sample areas of overlap, but
+will more accurately reflect the polygons in the files.
 
 ### Example
 
