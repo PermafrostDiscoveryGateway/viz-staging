@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import box
+from filelock import Timeout, FileLock
 
 from . import ConfigManager
 from . import TilePathManager
@@ -355,13 +356,14 @@ class TileStager():
             tile_path = self.tiles.path_from_tile(tile, base_dir='staged')
             self.tiles.create_dirs(tile_path)
 
+            # Lock the tile so that multiple processes don't try to write to
+            lock = self.__lock_file(tile_path)
+
             # Track the start time, the tile, and the number of vectors
             start_time = datetime.now()
             logger.info(
                 f'Saving {len(data.index)} vectors to tile {tile_path}'
             )
-
-            self.tiles.create_dirs(tile_path)
 
             # Save a copy of the tile column for the summary
             tiles = data[self.props['tile']].copy()
@@ -387,20 +389,22 @@ class TileStager():
                 # file.
                 else:
                     mode = 'a'
-            # Ignore the FutureWarning that is raised because of geopandas
-            # issue 2347
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', FutureWarning)
-                data.to_file(tile_path, mode=mode)
 
-            # Track the end time, the total time, and the number of vectors
-            logger.info(
-                f'Saved {tile_path} in {datetime.now() - start_time}'
-            )
+            try:
+                # Ignore the FutureWarning raised from geopandas issue 2347
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', FutureWarning)
+                    data.to_file(tile_path, mode=mode)
 
-            # Record what was saved
-            data[self.props['tile']] = tiles
-            self.summarize(data)
+                # Record what was saved
+                data[self.props['tile']] = tiles
+                self.summarize(data)
+            finally:
+                # Track the end time, the total time, and the number of vectors
+                logger.info(
+                    f'Saved {tile_path} in {datetime.now() - start_time}'
+                )
+                self.__release_file(lock)
 
     def combine_and_deduplicate(self, gdf, tile_path):
         """
@@ -531,3 +535,35 @@ class TileStager():
                 (datetime.now() - start_time)
             )
         )
+
+    def __lock_file(self, path):
+        """
+            Lock a file for writing.
+
+            Parameters
+            ----------
+            path : str
+                The path to the file to lock
+
+            Returns
+            -------
+            lock : FileLock
+                The lock object
+        """
+        lock_path = path + '.lock'
+        lock = FileLock(lock_path)
+        lock.acquire()
+        return lock
+
+    def __release_file(self, lock):
+        """
+            Release a file lock. Remove the lock file.
+
+            Parameters
+            ----------
+            lock : FileLock
+                The lock to release
+        """
+        lock.release()
+        if os.path.exists(lock.lock_file):
+            os.remove(lock.lock_file)

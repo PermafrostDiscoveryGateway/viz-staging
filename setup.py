@@ -18,7 +18,8 @@ setup(
         'pandas >= 1.4, < 2.0',
         'geopandas >= 0.10, < 1.0',
         'morecantile >= 3.1, < 4.0',
-        'Rtree >= 0.9, < 1.0'
+        'Rtree >= 0.9, < 1.0',
+        'filelock >= 3.6, < 4.0'
     ],
     python_requires='>=3.9, <4.0',
     classifiers=[
