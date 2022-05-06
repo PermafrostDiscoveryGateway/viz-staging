@@ -5,7 +5,7 @@ import morecantile
 
 class TilePathManager():
     """
-        The Tile Path Manager class handles creating and parsing paths to
+        The Tile & Path Manager class handles creating and parsing paths to
         geospatial data that have been tiled in accordance with a TileMatrixSet
         (tms). Using the class, paths to tiled files follow a standardized
         structure that incorporate the tile's x, y and z indices. Also includes

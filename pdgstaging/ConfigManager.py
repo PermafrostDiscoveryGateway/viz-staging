@@ -896,6 +896,10 @@ class ConfigManager():
                     'path': self.get('dir_input'),
                     'ext': self.get('ext_input')
                 },
+                'footprints': {
+                    'path': self.get('dir_footprints'),
+                    'ext': self.get('ext_footprints')
+                },
                 'staged': {
                     'path': self.get('dir_staged'),
                     'ext': self.get('ext_staged')
@@ -940,15 +944,10 @@ class ConfigManager():
                 'return_intersections': False
             }
         if(method == 'footprints'):
-
-            fp_dir = self.get('dir_footprints')
-            fp_ext = self.get('ext_footprints')
-            input_ext = self.get('ext_input')
             files = gdf[file_prop].unique().tolist()
             footprints = {}
             for f in files:
-                f_base = os.path.basename(f).removesuffix(input_ext)
-                footprints[f] = os.path.join(fp_dir, f_base + fp_ext)
+                footprints[f] = self.footprint_path_from_input(f)
             return {
                 'split_by': file_prop,
                 'footprints': footprints,
@@ -992,6 +991,42 @@ class ConfigManager():
         if(method == 'footprints'):
             return deduplicate_by_footprint
         return None
+
+    def footprint_path_from_input(self, path, check_exists=False):
+        """
+        Get the footprint path from an input path
+
+        Parameters
+        ----------
+        path : str
+            The path to the input file.
+        check_exists : bool, optional
+            Whether to check if the file exists. Defaults to False. If True,
+            will raise a FileNotFoundError if the file does not exist.
+
+        Returns
+        -------
+        path : str
+            The path to the footprint file.
+        """
+
+        dir_input = self.get('dir_input').strip(os.sep)
+        dir_footprints = self.get('dir_footprints')
+        ext_footprints = self.get('ext_footprints')
+        # Ensure the path doesn't contian the input dir or any leading slashes
+        path = path.strip(os.sep).removeprefix(dir_input).strip(os.sep)
+        # Remove extension from path
+        path = os.path.splitext(path)[0]
+        path = os.path.join(dir_footprints, path + ext_footprints)
+        if check_exists:
+            if os.path.exists(path):
+                print('Found footprint file: {}'.format(path))
+                return path
+            else:
+                print('Could not find footprint file: {}'.format(path))
+                raise FileNotFoundError(path)
+        else:
+            return path
 
     def update_ranges(self, new_ranges, save_config=True):
         """

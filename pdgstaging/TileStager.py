@@ -35,16 +35,35 @@ class TileStager():
                 belong to the identified tile.
     """
 
-    def __init__(
-        self,
-        config
-    ):
+    def __init__(self, config=None, check_footprints=True):
         """
             Initialize the TileStager object.
+
+            Parameters
+            ----------
+            config : dict
+                The configuration dictionary to use. If not provided,
+                the default configuration will be used.
+
+            check_footprints : bool
+                When True, upon initialization, checks that a footprint file
+                can be found for each of the input files when the
+                deduplicate_method is set to 'footprints'. If not, raises
+                an exception. Default is True.
         """
 
         self.config = ConfigManager(config)
         self.tiles = TilePathManager(**self.config.get_path_manager_config())
+
+        if(check_footprints and
+           self.config.get('deduplicate_method') == 'footprints'):
+            print('Checking for footprint files...')
+            missing = self.check_footprints()
+            num_missing = len(missing)
+            if num_missing > 0:
+                raise FileNotFoundError(
+                    f'Missing footprint files for {num_missing} files: '
+                    f'{missing}')
 
         # Configured names of properties that will be added to each polygon
         # during either staging or rasterization
@@ -236,35 +255,37 @@ class TileStager():
         start_time = datetime.now()
 
         props = self.props
+        num_polygons = len(gdf.index)
 
-        # Get the centroids and area, identify the tile for each polygon.
-        # Calculating these properties will give a warning when the CRS is not
-        # a projected CRS. Since the geometries are small, the resulting
-        # numbers should be accurate enough.
-
-        # Catch the UserWarning that is raised if centroid is calculated
-        # using the a non-projected coordinate system.
+        # Get the centroids and area. Calculating these properties will give a
+        # warning when the CRS is not a projected CRS. Since the geometries are
+        # small, the resulting numbers should be accurate enough.
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', UserWarning)
             centroids = gdf.centroid
             gdf[props['area']] = gdf.area
+        gdf[props['centroid_x']] = centroids.x
+        gdf[props['centroid_y']] = centroids.y
 
+        # Add source file path, excluding the input dir and any leading slashes
+        dir_input = self.config.get('dir_input')
+        gdf[props['filename']] = path.removeprefix(dir_input).strip(os.sep)
+
+        # Add identifier
+        gdf[props['identifier']] = [
+            str(uuid.uuid4()) for _ in range(num_polygons)]
+
+        # Find the tiles the polygon centroid falls within
         gdf[props['centroid_tile']] = self.which_tiles(
             centroids.x, centroids.y)
 
-        gdf[props['centroid_x']] = centroids.x
-        gdf[props['centroid_y']] = centroids.y
-        # Add the original file name and an identifier for each polygon
-        gdf[props['filename']] = os.path.basename(path)
-        gdf[props['identifier']] = [
-            str(uuid.uuid4()) for _ in range(len(gdf.index))
-        ]
+        # Find the tiles the polygon intersects
         gdf = self.assign_tile(gdf)
         centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
         gdf[props['centroid_within_tile']] = centroid_only
 
         logger.info(
-            f'Added properties for {len(gdf.index)} vectors in '
+            f'Added properties for {num_polygons} vectors in '
             f'{datetime.now() - start_time} from file {path}'
         )
         return gdf
@@ -535,6 +556,33 @@ class TileStager():
                 (datetime.now() - start_time)
             )
         )
+
+    def check_footprints(self):
+        """
+        Check if all the footprint files exist.
+
+        Returns
+        -------
+        list of str
+            Returns a list of input filenames that are missing footprint files.
+            Returns an empty list if all footprint files exist.
+        """
+        missing_footprints = []
+        matching_footprints = []
+        input_paths = self.tiles.get_filenames_from_dir('input')
+        for path in input_paths:
+            try:
+                footprint = self.config.footprint_path_from_input(
+                    path, check_exists=True)
+            except FileNotFoundError:
+                missing_footprints.append(path)
+            else:
+                matching_footprints.append(footprint)
+        num_missing = len(missing_footprints)
+        num_found = len(matching_footprints)
+        logging.info(f'Found {num_found} matching footprints. '
+                     f'{num_missing} missing.')
+        return missing_footprints
 
     def __lock_file(self, path):
         """
