@@ -67,6 +67,8 @@ footprint polygons must also have a property that can be used to rank the files
 in order of preference, such that only polygons from the preferred file are
 kept in areas of overlap. (This property should be specified in `keep_rules`).
 
+For more details, see [footprints for deduplication](footprints.md)
+
 # Neighbor method
 
 The neighbor method removes nearby or overlapping polygons when they come from
