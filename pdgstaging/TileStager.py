@@ -57,11 +57,11 @@ class TileStager():
 
         if(check_footprints and
            self.config.get('deduplicate_method') == 'footprints'):
-            print('Checking for footprint files...')
+            logger.info('Checking for footprint files...')
             missing = self.check_footprints()
             num_missing = len(missing)
             if num_missing > 0:
-                raise FileNotFoundError(
+                logger.warning(
                     f'Missing footprint files for {num_missing} files: '
                     f'{missing}')
 

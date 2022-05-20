@@ -13,6 +13,8 @@ is listed in the input directory (configured as `dir_input`), must have it's bou
 in order of preference, such that only polygons from the preferred file are
 kept in areas of overlap. These properties must match the properties configured in [`keep_rules`](deduplication.md)
 
+**Important:** *The TileStager will, by default, check for the existence of a footprint file for each input vector file. However, if some or all footprints are missing, the stager will log a warning and proceed anyways. To check which footprints are missing first, run `TileStager(config).check_footprints()` before running `stage` or `stage_all`*
+
 ## Example
 
 ### File tree structure

@@ -1,6 +1,9 @@
+import logging
 import json
 import os
 from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigManager():
@@ -946,13 +949,20 @@ class ConfigManager():
         if(method == 'footprints'):
             files = gdf[file_prop].unique().tolist()
             footprints = {}
+
             for f in files:
-                footprints[f] = self.footprint_path_from_input(f)
+                try:
+                    footprints[f] = self.footprint_path_from_input(f)
+                except FileNotFoundError:
+                    logger.warning(
+                        f'No footprint files found for file {f}. '
+                        'Deduplication will not be performed for this file.')
             return {
                 'split_by': file_prop,
                 'footprints': footprints,
                 'keep_rules': self.get('deduplicate_keep_rules')
             }
+
         return None
 
     def deduplicate_at(self, step):
@@ -1020,10 +1030,10 @@ class ConfigManager():
         path = os.path.join(dir_footprints, path + ext_footprints)
         if check_exists:
             if os.path.exists(path):
-                print('Found footprint file: {}'.format(path))
+                logger.info('Found footprint file: {}'.format(path))
                 return path
             else:
-                print('Could not find footprint file: {}'.format(path))
+                logger.info('Could not find footprint file: {}'.format(path))
                 raise FileNotFoundError(path)
         else:
             return path
