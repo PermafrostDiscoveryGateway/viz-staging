@@ -14,7 +14,7 @@ setup(
     url='https://github.com/PermafrostDiscoveryGateway/viz-staging',
     packages=['pdgstaging'],
     install_requires=[
-        'numpy >= 1.22, < 2.0',
+        'numpy >= 1.2, < 2.0',
         'pandas >= 1.4, < 2.0',
         'geopandas >= 0.10, < 1.0',
         'morecantile >= 3.1, < 4.0',
