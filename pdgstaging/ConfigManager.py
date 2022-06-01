@@ -260,6 +260,21 @@ class ConfigManager():
                     centroid_tolerance will use the units of this CRS. Set to
                     None to skip the re-projection and use the CRS of the
                     GeoDataFrame.
+                - deduplicate_clip_to_footprint : bool, optional
+                    For the 'footprints' deduplication method only. If True,
+                    then polygons that fall outside the bounds of the
+                    associated footprint will be removed. Default is False.
+                - deduplicate_clip_method: str, optional
+                    For the 'footprints' deduplication method only, when
+                    deduplicate_clip_to_footprint is True. The method to use to
+                    determine if a polygon falls within the footprint. The
+                    method is used as the the predicate for an sjoin operation
+                    between the polygons GDF and the footprint GDF. Can be one
+                    of: 'contains', 'contains_properly', 'covers', 'crosses',
+                    'intersects', 'overlaps', 'touches', 'within' (any option
+                    listed by
+                    geopandas.GeoDataFrame.sindex.valid_query_predicates).
+                    Defaults to 'within'.
 
         Example config:
         ---------------
@@ -293,7 +308,7 @@ class ConfigManager():
                     "palette": ["red", "blue"],
                     "z_config": {
                         0: {
-                        "val_range": [0,0.5],
+                            "val_range": [0,0.5],
                         }, ...
                     }
                 }
@@ -360,7 +375,9 @@ class ConfigManager():
         'deduplicate_overlap_tolerance': 0.5,
         'deduplicate_overlap_both': True,
         'deduplicate_centroid_tolerance': None,
-        'deduplicate_distance_crs': 'EPSG:3857'
+        'deduplicate_distance_crs': 'EPSG:3857',
+        'deduplicate_clip_to_footprint': False,
+        'deduplicate_clip_method': 'within'
     }
 
     def __init__(self, config=None):
@@ -960,7 +977,11 @@ class ConfigManager():
             return {
                 'split_by': file_prop,
                 'footprints': footprints,
-                'keep_rules': self.get('deduplicate_keep_rules')
+                'keep_rules': self.get('deduplicate_keep_rules'),
+                'clip_to_footprint': self.get(
+                    'deduplicate_clip_to_footprint'),
+                'clip_method': self.get(
+                    'deduplicate_clip_method')
             }
 
         return None

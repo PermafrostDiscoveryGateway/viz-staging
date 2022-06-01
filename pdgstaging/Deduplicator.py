@@ -31,20 +31,19 @@ def keep_rules_to_sort_order(keep_rules):
     return sort_props, sort_order
 
 
-def clip_to_footprint(gdf=None, footprint=None, method='within'):
+def clip_gdf(gdf=None, boundary=None, method='within'):
     """
-        'Clip' a GeoDataFrame to a footprint boundary. Determine if the
-        polygons in the GeoDataFrame are within the footprint boundary by using
-        an sjoin operation, with a specified method.
+        Remove polygons from a GeoDataFrame that fall outside of some boundary.
+        Determine if the polygons in the GeoDataFrame are within the boundary
+        by using an sjoin operation, with a specified method.
 
         Parameters
         ----------
         gdf : GeoDataFrame
             The GeoDataFrame to clip.
 
-        footprint : GeoDataFrame
-            A GeoDataFrame that contains polygons representing the boundaries
-            of the footprint.
+        boundary : GeoDataFrame
+            A GeoDataFrame that contains polygons representing the boundaries.
 
         method : str
             The predicate to use for the sjoin operation. Can be one of:
@@ -60,12 +59,12 @@ def clip_to_footprint(gdf=None, footprint=None, method='within'):
             (the value of the 'removed' key).
     """
     # Temporary property to use during the sjoin
-    prop_in_fp_temp = 'WITHIN_FOOTPRINT_' + uuid.uuid4().hex
+    prop_in_fp_temp = 'WITHIN_BOUNDARY_' + uuid.uuid4().hex
 
-    footprint = footprint.copy().filter(['geometry'])
-    footprint[prop_in_fp_temp] = True
+    boundary = boundary.copy().filter(['geometry'])
+    boundary[prop_in_fp_temp] = True
 
-    gdf = gdf.sjoin(footprint, how='left', predicate=method) \
+    gdf = gdf.sjoin(boundary, how='left', predicate=method) \
              .drop(['index_right'], axis=1)
 
     within = gdf[gdf[prop_in_fp_temp].notnull()]
@@ -493,13 +492,16 @@ def deduplicate_by_footprint(
         fp_gdf[prop_filename_temp] = name
         # Make sure the footprints are in the same CRS as the GeoDataFrame
         fp_gdf.to_crs(crs, inplace=True)
-        # Clip to gdf to the extent of the footprints
-        if clip_to_footprint:
-            clip_results = clip_to_footprint(
-                gdf=gdf_dict['name'].copy(),
-                footprint=fp_gdf.copy(),
+        footprints[name] = fp_gdf
+
+    # Clip to gdf to the extent of the footprints
+    if clip_to_footprint:
+        for name, gdf_grp in gdf_dict.items():
+            clip_results = clip_gdf(
+                gdf=gdf_grp.copy(),
+                boundary=footprints[name].copy(),
                 method=clip_method)
-            gdf_dict['name'] = clip_results['keep']
+            gdf_dict[name] = clip_results['keep']
             removed.append(clip_results['removed'])
 
     # Rank the footprints according to the keep_rules
