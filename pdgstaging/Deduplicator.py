@@ -31,6 +31,55 @@ def keep_rules_to_sort_order(keep_rules):
     return sort_props, sort_order
 
 
+def clip_to_footprint(gdf=None, footprint=None, method='within'):
+    """
+        'Clip' a GeoDataFrame to a footprint boundary. Determine if the
+        polygons in the GeoDataFrame are within the footprint boundary by using
+        an sjoin operation, with a specified method.
+
+        Parameters
+        ----------
+        gdf : GeoDataFrame
+            The GeoDataFrame to clip.
+
+        footprint : GeoDataFrame
+            A GeoDataFrame that contains polygons representing the boundaries
+            of the footprint.
+
+        method : str
+            The predicate to use for the sjoin operation. Can be one of:
+            'contains', 'contains_properly', 'covers', 'crosses', 'intersects',
+            'overlaps', 'touches', 'within' (any option listed by
+            geopandas.GeoDataFrame.sindex.valid_query_predicates)
+
+        Returns
+        -------
+        dict
+            A dictionary containing the clipped GeoDataFrame (the value of the
+            'keep' key), and the GeoDataFrame of polygons that were removed
+            (the value of the 'removed' key).
+    """
+    # Temporary property to use during the sjoin
+    prop_in_fp_temp = 'WITHIN_FOOTPRINT_' + uuid.uuid4().hex
+
+    footprint = footprint.copy().filter(['geometry'])
+    footprint[prop_in_fp_temp] = True
+
+    gdf = gdf.sjoin(footprint, how='left', predicate=method) \
+             .drop(['index_right'], axis=1)
+
+    within = gdf[gdf[prop_in_fp_temp].notnull()]
+    within = within.drop([prop_in_fp_temp], axis=1)
+
+    outside = gdf[~gdf[prop_in_fp_temp].notnull()]
+    outside = outside.drop([prop_in_fp_temp], axis=1)
+
+    return {
+        'keep': within,
+        'removed': outside
+    }
+
+
 def deduplicate_neighbors(
     gdf,
     split_by=None,
@@ -343,7 +392,9 @@ def deduplicate_by_footprint(
     split_by,
     footprints,
     keep_rules=[],
-    return_intersections=False
+    return_intersections=False,
+    clip_to_footprint=False,
+    clip_method='within'
 ):
     """
 
@@ -381,6 +432,16 @@ def deduplicate_by_footprint(
     return_intersections : bool, optional
         If true, the polygons that represent the intersections between
         footprints will be returned. Default is False.
+    clip_to_footprint : bool, optional
+        If true, the polygons that do not fall within the footprint will be
+        removed before deduplication. Default is False.
+    clip_method : str, optional
+        The method to use to determine if a polygon falls within the footprint.
+        The method is used as the the predicate for an sjoin operation between
+        the polygons GDF and the footprint GDF. Can be one of: 'contains',
+        'contains_properly', 'covers', 'crosses', 'intersects', 'overlaps',
+        'touches', 'within' (any option listed by
+        geopandas.GeoDataFrame.sindex.valid_query_predicates)
 
     Returns
     -------
@@ -396,6 +457,11 @@ def deduplicate_by_footprint(
     """
 
     gdf = gdf.copy()
+
+    # Will hold the polygons that were removed
+    removed = []
+    # Will hold the polygons that defined the footprint intersections
+    intersections = []
 
     # To make sure footprints are in the correct CRS
     crs = gdf.crs
@@ -415,7 +481,8 @@ def deduplicate_by_footprint(
             'intersections': None
         }
 
-    # If the values of footprints dict are strings, then load the footprints
+    # If the values of footprints dict are strings, then assume the strings are
+    # paths and load the footprints
     if all([isinstance(v, str) for v in footprints.values()]):
         for name, path in footprints.items():
             footprints[name] = gpd.read_file(path)
@@ -424,7 +491,16 @@ def deduplicate_by_footprint(
     prop_filename_temp = 'filename_' + uuid.uuid4().hex
     for name, fp_gdf in footprints.items():
         fp_gdf[prop_filename_temp] = name
+        # Make sure the footprints are in the same CRS as the GeoDataFrame
         fp_gdf.to_crs(crs, inplace=True)
+        # Clip to gdf to the extent of the footprints
+        if clip_to_footprint:
+            clip_results = clip_to_footprint(
+                gdf=gdf_dict['name'].copy(),
+                footprint=fp_gdf.copy(),
+                method=clip_method)
+            gdf_dict['name'] = clip_results['keep']
+            removed.append(clip_results['removed'])
 
     # Rank the footprints according to the keep_rules
     footprints_concat = gpd.GeoDataFrame(pd.concat(
@@ -436,9 +512,6 @@ def deduplicate_by_footprint(
         ascending=sort_order,
         inplace=True)
     rank = footprints_concat[prop_filename_temp].tolist()
-
-    removed = []
-    intersections = []
 
     # Find overlapping section of footprints
     # For every pairwise combination of two (subsetted) GDFs
