@@ -29,3 +29,22 @@ Each footprint file should contain the boundaries for just one input file. The b
 
 ![expectations for footprint file](images/footprint-file.png)
 
+## Clip by footprint
+
+In some cases, exact footprint boundaries may not be available. In the example below, the polygons spill out past the boundary:
+
+![footprint-boundary-issue](images/footprint-boundary-issue.png)
+
+This can result in overly dense/bright spots in the resulting raster layer:
+
+![footprint-boundary-issue_rasterization](images/footprint-boundary-issue_rasterization.png)
+
+To remove any polygons that are beyond the extent of the footprint during the deduplication process, set the `clip_by_footprint` option to `true` (it is false by default). This will add a spatial join operation to the deduplication process, which determines whether the polygons fall within the footprint boundaries or not. Any that fall outside the footprint will be removed. By default, the spaitial join uses the predicate `within`, which means a polygon is *kept* if its *boundary and interior* intersect with the *interior* of the footprint (but not its boundary or exterior). However, any predicate that can be used in the `geopanda`'s `sjoin` method can be set on the `deduplicate_clip_method` option. (See [shapely binary-predicates](https://shapely.readthedocs.io/en/latest/manual.html#binary-predicates)). 
+
+Here is an example of a raster layer with and without the `clip_by_footprint` method:
+
+**without `clip_by_footprint`**
+![without](images/footprint-clip-by_before.png)
+
+**with `clip_by_footprint`**
+![with](images/footprint-clip-by_after.png)
