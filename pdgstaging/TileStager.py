@@ -24,14 +24,15 @@ class TileStager():
         to the given OGC TileMatrixSet ("TMS").
 
         The following steps are performed:
-            1. Projects the input vector file to the CRS of the TMS. (Also sets
+            1. Removes any non-polygon features.
+            2. Projects the input vector file to the CRS of the TMS. (Also sets
                the CRS initially if needed.)
-            2. Simplifies the polygons using the Douglas-Peucker algorithm
+            3. Simplifies the polygons using the Douglas-Peucker algorithm
                 with the specified tolerance.
-            3. Adds properties to each vector including centroid coordinates,
+            4. Adds properties to each vector including centroid coordinates,
                area, and a UUID.
-            4. Identifies which tile in the given TMS the polygon belongs to.
-            5. Creates a new vector file that contain only the polygons that
+            5. Identifies which tile in the given TMS the polygon belongs to.
+            6. Creates a new vector file that contain only the polygons that
                 belong to the identified tile.
     """
 
@@ -120,6 +121,8 @@ class TileStager():
                 The path to the vector file to process and create tiles for.
         """
         gdf = self.get_data(path)
+        # Remove any geometries that are not polygons
+        gdf = gdf[gdf.geometry.type == 'Polygon']
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
             gdf = self.set_crs(gdf)

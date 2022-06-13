@@ -69,5 +69,5 @@ The staging process will also output a summary CSV file with one row for each ti
 
 ## Assumptions
 
-- It is assumed that incoming vector data comprises only valid polygons. This has not yet been tested with multi-polygons, points, lines, or other geometries.
+- It is assumed that incoming vector data comprises only valid polygons. **Any non-polygon data is removed**, including multi-polygons, points, lines, or other geometries.
 - It's also assumed that each incoming vector file is staged only once. If a file passes through the staging step twice, then all polygons from that file will be duplicated in the output (but with a different identifier). This is due to the fact that when a tile file already exists, additional polygons that belong to this tile will be appended to the file.
