@@ -30,6 +30,8 @@ class ConfigManager():
                 The directory to save GeoTIFF files to.
             - dir_web_tiles : str
                 The directory to save web tiles to.
+            - dir_3dtiles: str
+                The directory to save 3D tiles to.
             - dir_footprints: str
                 The directory to read footprint files from. Required only if
                 the 'deduplicate_method' is 'footprints'. A footprint is a
@@ -196,6 +198,14 @@ class ConfigManager():
                         Eventually, this could be used to set z-specific tile
                         sizes and color palettes.
 
+            - 3D Tile options:
+                - version: str
+                    An optional version code that identifies this worklflow run
+                    can be set. Currently, the version is only added to the
+                    3dtiles tileset.json asset property.
+                - geometricError: float
+                    An optional geometric error to use for all of the 3D tiles.
+
             - Deduplication options. Deduplicate input that comes from multiple
               source files.
                 - deduplicate_at : list of str or None
@@ -318,8 +328,10 @@ class ConfigManager():
 
     defaults = {
         # Directory paths for input and out put
+        'version': None,
         'dir_geotiff': 'geotiff',
         'dir_web_tiles': 'web_tiles',
+        'dir_3dtiles': '3dtiles',
         'dir_staged': 'staged',
         'dir_input': 'input',
         'dir_footprints': 'footprints',
@@ -368,6 +380,7 @@ class ConfigManager():
                 'val_range': [0, 1]
             }
         ],
+        'geometricError': None,
         # Deduplication options. Do not deduplicate by default.
         'deduplicate_at': None,
         'deduplicate_method': None,
@@ -931,6 +944,10 @@ class ConfigManager():
                 'web_tiles': {
                     'path': self.get('dir_web_tiles'),
                     'ext': self.get('ext_web_tiles')
+                },
+                '3dtiles': {
+                    'path': self.get('dir_3dtiles'),
+                    'ext': '.json'
                 }
             }
         }
