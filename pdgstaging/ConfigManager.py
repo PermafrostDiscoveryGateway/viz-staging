@@ -205,6 +205,9 @@ class ConfigManager():
                     3dtiles tileset.json asset property.
                 - geometricError: float
                     An optional geometric error to use for all of the 3D tiles.
+                - z_coord: float
+                    For input data that has only x and y coordinates, a
+                    z-coordinate to use for the 3D tiles. Default is 0.
 
             - Deduplication options. Deduplicate input that comes from multiple
               source files.
@@ -381,6 +384,7 @@ class ConfigManager():
             }
         ],
         'geometricError': None,
+        'z_coord': 0,
         # Deduplication options. Do not deduplicate by default.
         'deduplicate_at': None,
         'deduplicate_method': None,
