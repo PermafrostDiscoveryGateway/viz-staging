@@ -2,6 +2,9 @@ import logging
 import json
 import os
 from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
+from .TilePathManager import TilePathManager
+import warnings
+from coloraide import Color
 
 logger = logging.getLogger(__name__)
 
@@ -397,6 +400,21 @@ class ConfigManager():
         'deduplicate_clip_method': 'within'
     }
 
+    tiling_scheme_map = {
+        # A tiling scheme for geometry referenced to a simple
+        # GeographicProjection where longitude and latitude are directly
+        # mapped to X and Y. This projection is commonly known as
+        # geographic, equirectangular, equidistant cylindrical, or plate
+        # carrée.
+        'GeographicTilingScheme': ['WorldCRS84Quad', 'WGS1984Quad'],
+        # A tiling scheme for geometry referenced to a
+        # WebMercatorProjection, EPSG:3857. This is the tiling scheme used
+        # by Google Maps, Microsoft Bing Maps, and most of ESRI ArcGIS
+        # Online.
+        'WebMercatorTilingScheme': [
+            'WebMercatorQuad', 'WorldMercatorWGS84Quad'],
+    }
+
     def __init__(self, config=None):
         """
             Parameters
@@ -610,6 +628,200 @@ class ConfigManager():
         for stat in self.config['statistics']:
             resampling_methods.append(stat['resampling_method'])
         return resampling_methods
+
+    def get_metacatui_raster_configs(self, base_url=''):
+        """
+            Return a dictionary that can be used to configure a 3d tile layer
+            in a MetacatUI Cesium map.
+
+            Parameters
+            ----------
+            base_url : str The url to where the layers will be hosted. If not
+            set then, paths will be relative starting with the TMS ID.
+
+            Returns
+            -------
+            list
+                The metacatui configuration objects as dicts
+        """
+
+        tms = self.get('tms_id')
+        stats = self.get_stat_names()
+        index_order = list(self.get('tile_path_structure'))
+        ext = self.get('ext_web_tiles')
+        tsm = self.tiling_scheme_map
+        tile_manager = TilePathManager(self.original_config)
+        max_z = self.get_max_z()
+
+        index_map = {
+            'style': '',
+            'tms': tms,
+            'z': '{TileMatrix}',
+            'x': '{TileCol}',
+            'y': '{TileRow}'
+        }
+
+        # Get the tilingScheme
+        scheme = 'WebMercatorTilingScheme'
+        scheme_match = [s for s, t in tsm.items() if tms in t]
+        if len(scheme_match) == 0:
+            warnings.warn(f'Cesium does not support the tiling scheme: {tms},'
+                          ' using a default WebMercatorTilingScheme.')
+        else:
+            scheme = scheme_match[0]
+
+        # Get the bounds:
+        try:
+            bounds = tile_manager.get_total_bounding_box('web_tiles', max_z)
+        except ValueError:
+            try:
+                bounds = tile_manager.get_total_bounding_box('staged')
+            except ValueError:
+                try:
+                    bounds = tile_manager.get_total_bounding_box(
+                        'geotiff', max_z)
+                except ValueError:
+                    try:
+                        bounds = tile_manager.get_total_bounding_box(
+                            '3dtiles', max_z)
+                    except ValueError:
+                        warnings.warn(
+                            'Tile files could not be found. The cesium '
+                            'rectangle option will not be set, and Cesium will'
+                            ' assume that the layer covers the entire world.')
+                        bounds = None
+
+        layer_configs = []
+
+        for stat in stats:
+
+            # make the URl
+            index_map['style'] = stat
+            path_parts = [index_map[i] for i in index_order]
+            path_parts[-1] += ext
+            url = os.path.join(base_url, *path_parts + ext)
+
+            # Get the color palette
+            color_palette = self.get_stat_config(stat)['palette']
+
+            # convert all to hex codes.
+            colors = [self.to_hex(c).to for c in color_palette]
+            num_cols = len(colors)
+            # Get min and max. As the Cesium map doesn't support a different
+            # palette for each z-level yet, just use the max_z palette
+            minv = self.get_min(self, stat=stat, z=max_z, sub_general=True)
+            maxv = self.get_min(self, stat=stat, z=max_z, sub_general=True)
+
+            colors = []
+            for i in range(num_cols):
+                colors.append({
+                    'color': colors[i],
+                    'value': minv + (maxv - minv) * (i / (num_cols - 1))
+                })
+
+            layer_configs.append({
+                'type': 'WebMapTileServiceImageryProvider',
+                'label': stat,
+                'cesiumOptions': {
+                    'url': url,
+                    "tilingScheme": scheme,
+                    "rectangle": bounds,
+                },
+                'colorPalette': {
+                    'paletteType': 'continuous',
+                    'property': stat,
+                    'colors': colors
+                }
+            })
+
+        return layer_configs
+
+    def get_metacatui_3dtiles_config(self, base_url='', color=None):
+        """
+            Return a dictionary that can be used to configure a 3d tile layer
+            in a MetacatUI Cesium map.
+
+            Parameters
+            ----------
+            base_url : str
+                The url to where the layers will be hosted. If not set then,
+                paths will be relative starting with the TMS ID.
+            color : str
+                The color to use for the 3d tiles. If not set, then the first
+                color in the first configured statistic will be used, or white
+                if no colors are configured.
+
+            Returns
+            -------
+            dict
+                The metacatui configuration object as a dict.
+        """
+
+        min_z = self.get_min_z()
+        tile_manager = TilePathManager(self.original_config)
+        try:
+            top_tree_tile = tile_manager.get_filenames_from_dir(
+                '3dtiles', z=min_z)
+            if len(top_tree_tile) == 0 or len(top_tree_tile) > 1:
+                raise ValueError('No 3dtiles found')
+        except ValueError:
+            raise ValueError(
+                'The top-most json node for the Cesium 3D tileset tree'
+                ' could noat be found. Please check that the 3dtiles'
+                ' dir is correctly configured, and that the workflow'
+                'has already run.')
+        top_tree_tile = top_tree_tile[0]
+        # remove the 3dtiles base dir
+        top_tree_tile = top_tree_tile.replace(self.get('dir_3dtiles'), '')
+        # Add the hosting base url
+        top_tree_tile = os.path.join(base_url, top_tree_tile)
+
+        if color is None:
+            pals = self.get_palettes()
+            if(pals and len(pals) > 0):
+                color = pals[0][0]
+            else:
+                color = 'white'
+        color = self.to_hex(color)
+
+        return {
+            'label': '3D Tiles',
+            'type': 'Cesium3DTileset',
+            'cesiumOptions': {
+                'url': top_tree_tile,
+            },
+            'colorPalette': {
+                'paletteType': 'categorical',
+                'colorPalette': {'colors': [{'color': color}]}
+            }
+        }
+
+    def get_metacatui_configs(self, base_url='', tile3d_color=None):
+        """
+            Return a dictionary that can be used to configure a layer in a
+            MetacatUI Cesium map.
+
+            Parameters
+            ----------
+            base_url : str
+                The url to where the layers will be hosted. If not set then,
+                paths will be relative starting with the TMS ID.
+            3dtile_color : str
+                The color to use for the 3d tiles. If not set, then the first
+                color in the first configured statistic will be used, or white
+                if no colors are configured.
+
+            Returns
+            -------
+            list
+                A list of metacatui configuration objects as dicts, starting
+                with the 3D tiles layer, followed by the raster layers.
+        """
+
+        tiles3d_config = self.get_metacatui_3dtiles_config(
+            base_url=base_url, color=tile3d_color)
+        raster_configs = self.get_metacatui_raster_configs(base_url=base_url)
+        return [tiles3d_config] + raster_configs
 
     def get_value_range(self, stat=None, z=None, sub_general=False):
         """
@@ -1153,3 +1365,9 @@ class ConfigManager():
                 updates.append(f'{key} removed')
 
         return updates
+
+    def to_hex(color_str):
+        """
+            Convert a color string to a hex string
+        """
+        return Color(color_str).convert('sRGB').to_string(hex=True)

@@ -1,6 +1,8 @@
 import os
 import re
 import morecantile
+import geopandas as gpd
+from shapely.geometry import box
 
 
 class TilePathManager():
@@ -690,3 +692,34 @@ class TilePathManager():
                             'right': bounding_box.right}
 
         return bounding_box
+
+    def get_total_bounding_box(self, dir, z=None):
+        """
+            Get the total bounding box for all tiles in a directory.
+
+            Parameters
+            ----------
+            dir : str
+                The name of the directory to get the total bounding box for.
+            z : int
+                The zoom level to get the total bounding box for. If None, the
+                total bounding box for all zoom levels is returned.
+
+            Returns
+            -------
+            list
+                The total bounding box for the tiles in the directory, in the
+                unit of the CRS of the TMS set on this class.
+        """
+
+        tile_paths = self.get_filenames_from_dir(dir, z=z)
+        tiles = [self.tile_from_path(path) for path in tile_paths]
+        # get the total bounds for all the tiles
+        bounds = [self.get_bounding_box(tile) for tile in tiles]
+        # get the total bounds for all the tiles
+        polygons = [
+            box(b['left'], b['bottom'], b['right'], b['top']) for b in bounds]
+        bounds_gs = gpd.GeoSeries(polygons, crs=self.tms.crs)
+        total_bounds = list(bounds_gs.total_bounds)
+
+        return total_bounds
