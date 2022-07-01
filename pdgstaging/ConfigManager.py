@@ -439,6 +439,8 @@ class ConfigManager():
         # it
         self.original_config = self.config.copy()
 
+        self.tiles = TilePathManager(**self.get_path_manager_config())
+
         # Make a shortcut to the property names
         self.props = {}
         for k in self.config.keys():
@@ -650,7 +652,6 @@ class ConfigManager():
         index_order = list(self.get('tile_path_structure'))
         ext = self.get('ext_web_tiles')
         tsm = self.tiling_scheme_map
-        tile_manager = TilePathManager(self.original_config)
         max_z = self.get_max_z()
 
         index_map = {
@@ -672,17 +673,17 @@ class ConfigManager():
 
         # Get the bounds:
         try:
-            bounds = tile_manager.get_total_bounding_box('web_tiles', max_z)
+            bounds = self.tiles.get_total_bounding_box('web_tiles', max_z)
         except ValueError:
             try:
-                bounds = tile_manager.get_total_bounding_box('staged')
+                bounds = self.tiles.get_total_bounding_box('staged')
             except ValueError:
                 try:
-                    bounds = tile_manager.get_total_bounding_box(
+                    bounds = self.tiles.get_total_bounding_box(
                         'geotiff', max_z)
                 except ValueError:
                     try:
-                        bounds = tile_manager.get_total_bounding_box(
+                        bounds = self.tiles.get_total_bounding_box(
                             '3dtiles', max_z)
                     except ValueError:
                         warnings.warn(
@@ -699,22 +700,22 @@ class ConfigManager():
             index_map['style'] = stat
             path_parts = [index_map[i] for i in index_order]
             path_parts[-1] += ext
-            url = os.path.join(base_url, *path_parts + ext)
+            url = os.path.join(base_url, *path_parts)
 
             # Get the color palette
             color_palette = self.get_stat_config(stat)['palette']
 
             # convert all to hex codes.
-            colors = [self.to_hex(c).to for c in color_palette]
+            colors = [self.to_hex(c) for c in color_palette]
             num_cols = len(colors)
             # Get min and max. As the Cesium map doesn't support a different
             # palette for each z-level yet, just use the max_z palette
-            minv = self.get_min(self, stat=stat, z=max_z, sub_general=True)
-            maxv = self.get_min(self, stat=stat, z=max_z, sub_general=True)
+            minv = self.get_min(stat=stat, z=max_z, sub_general=True)
+            maxv = self.get_max(stat=stat, z=max_z, sub_general=True)
 
-            colors = []
+            color_objs = []
             for i in range(num_cols):
-                colors.append({
+                color_objs.append({
                     'color': colors[i],
                     'value': minv + (maxv - minv) * (i / (num_cols - 1))
                 })
@@ -730,7 +731,7 @@ class ConfigManager():
                 'colorPalette': {
                     'paletteType': 'continuous',
                     'property': stat,
-                    'colors': colors
+                    'colors': color_objs
                 }
             })
 
@@ -747,7 +748,7 @@ class ConfigManager():
                 The url to where the layers will be hosted. If not set then,
                 paths will be relative starting with the TMS ID.
             color : str
-                The color to use for the 3d tiles. If not set, then the first
+                The color to use for the 3d tiles. If not set, then the last
                 color in the first configured statistic will be used, or white
                 if no colors are configured.
 
@@ -758,9 +759,8 @@ class ConfigManager():
         """
 
         min_z = self.get_min_z()
-        tile_manager = TilePathManager(self.original_config)
         try:
-            top_tree_tile = tile_manager.get_filenames_from_dir(
+            top_tree_tile = self.tiles.get_filenames_from_dir(
                 '3dtiles', z=min_z)
             if len(top_tree_tile) == 0 or len(top_tree_tile) > 1:
                 raise ValueError('No 3dtiles found')
@@ -779,7 +779,7 @@ class ConfigManager():
         if color is None:
             pals = self.get_palettes()
             if(pals and len(pals) > 0):
-                color = pals[0][0]
+                color = pals[0][-1]
             else:
                 color = 'white'
         color = self.to_hex(color)
@@ -1366,8 +1366,13 @@ class ConfigManager():
 
         return updates
 
+    @staticmethod
     def to_hex(color_str):
         """
-            Convert a color string to a hex string
+            Convert a color string to a hex string without alpha channel
         """
-        return Color(color_str).convert('sRGB').to_string(hex=True)
+        color = Color(color_str).convert('sRGB').mask('alpha')
+        hex_str = color.to_string(hex=True)
+        if len(hex_str) == 9:
+            hex_str = hex_str[:-2]
+        return hex_str
