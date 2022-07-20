@@ -185,17 +185,17 @@ class ConfigManager():
                         The resampling method to use when combining raster data
                         from child tiles into parent tiles. See rasterio's
                         Resampling Methods for list of the available methods.
-                    - val_range : str
+                    - val_range : tuple of float or list of float
                         A min and max value for the statistic. This is used for
                         consistency when mapping the color palette to the pixel
                         values during web tile image generation. When a min or
                         max value within a val_range is set to None, then a min
                         or max value will be calculated for the each z-level
                         for which geotiffs are created.
-                    - palette : str
+                    - palette : list of str
                         A list of colors to use for the color palette
                       (for web-tiles)
-                    - z_config : str
+                    - z_config : dict
                         A dict of config options specific to each z-level.
                         Currently, only setting a val_range is supported.
                         Eventually, this could be used to set z-specific tile
@@ -856,6 +856,9 @@ class ConfigManager():
 
         if z is None:
             return general_val_range
+        # check if z is a string, convert if not
+        if not isinstance(z, str):
+            z = str(z)
         if z_config is None or z_config.get(z) is None:
             if sub_general:
                 return general_val_range

@@ -256,7 +256,7 @@ class TilePathManager():
         return morecantile.Tile(path_dict['x'], path_dict['y'], path_dict['z'])
 
     @staticmethod
-    def tile_from_string(tile_str=None):
+    def tile_from_str(tile_str=None):
         """
             Parse a morecantile tile that has been cast as a string in the
             format 'Tile(x=6, y=10, z=4)'. Get the x, y, and z values and

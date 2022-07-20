@@ -83,7 +83,8 @@ class TileStager():
 
     def stage_all(self):
         """
-            Create tiles using all of the available shapefiles
+            Process and create tiles from all of the vector files in the
+            configured input directory.
         """
 
         overall_start_time = datetime.now()
