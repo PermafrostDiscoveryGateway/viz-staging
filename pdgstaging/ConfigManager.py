@@ -195,6 +195,12 @@ class ConfigManager():
                     - palette : list of str
                         A list of colors to use for the color palette
                       (for web-tiles)
+                    - nodata_val: int or float or None or np.nan
+                        The value of pixels to interpret as no data or missing
+                        data. Defaults to None.
+                    - nodata_color: str
+                        When mapping pixel values to colors, the color to use
+                        for pixels with the no data value.
                     - z_config : dict
                         A dict of config options specific to each z-level.
                         Currently, only setting a val_range is supported.
@@ -376,6 +382,8 @@ class ConfigManager():
                 'aggregation_method': 'sum',
                 'resampling_method': 'sum',
                 'val_range': [0, None],
+                'nodata_val': 0,
+                'nodata_color': '#ffffff00'
             },
             {
                 'name': 'coverage',
@@ -383,7 +391,9 @@ class ConfigManager():
                 'property': 'area_per_pixel_area',
                 'aggregation_method': 'sum',
                 'resampling_method': 'average',
-                'val_range': [0, 1]
+                'val_range': [0, 1],
+                'nodata_val': 0,
+                'nodata_color': '#ffffff00'
             }
         ],
         'geometricError': None,
@@ -561,16 +571,37 @@ class ConfigManager():
         """
         return self.get('z_range')[1]
 
+    def get_colors(self):
+        """
+            Get the colors set for each statistic in the config object,
+            ignoring the no data color.
+        """
+        return [stat.get('palette') for stat in self.config['statistics']]
+
     def get_palettes(self):
         """
-            Get all palettes from the config object.
+            Get the colors set for each statistic in the config object,
+            including the no data color. Each item in the return list
+            can be used in instantiate a pdgraster.Palette with a color
+            gradient and nodata color.
 
             Returns
             -------
             list
-                The palettes.
+                The palettes, in the following format:
+                [
+                    [['stat1_col1', 'stat1_col2', ...], 'stat1_nodata_col' ],
+                    [['stat2_col1', 'stat2_col2', ...], 'stat2_nodata_col' ],
+                    ...
+                ]
         """
-        return [stat.get('palette') for stat in self.config['statistics']]
+        palettes = []
+        for stat in self.config['statistics']:
+            colors = stat.get('palette')
+            nodata_color = stat.get('nodata_color')
+            palette = [colors, nodata_color]
+            palettes.append(palette)
+        return palettes
 
     def get_stat_names(self):
         """
@@ -615,6 +646,19 @@ class ConfigManager():
                 return stat_config
         # If no stat with that name is found, return None
         return None
+
+    def get_nodata_vals(self):
+        """
+            Get the nodata values for each statistic in the config object.
+
+            Returns
+            -------
+            list
+                The nodata values.
+        """
+        stat_names = self.get_stat_names()
+        stat_configs = [self.get_stat_config(stat) for stat in stat_names]
+        return [stat.get('nodata_val') for stat in stat_configs]
 
     def get_resampling_methods(self):
         """
@@ -777,7 +821,7 @@ class ConfigManager():
         top_tree_tile = os.path.join(base_url, top_tree_tile)
 
         if color is None:
-            pals = self.get_palettes()
+            pals = self.get_colors()
             if(pals and len(pals) > 0):
                 color = pals[0][-1]
             else:
