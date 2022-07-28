@@ -1,18 +1,16 @@
-import uuid
-import os
-from datetime import datetime
 import logging
+import os
+import uuid
 import warnings
+from datetime import datetime
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
-import geopandas as gpd
+from filelock import FileLock, Timeout
 from shapely.geometry import box
-from filelock import Timeout, FileLock
 
-from . import ConfigManager
-from . import TilePathManager
-
+from . import ConfigManager, TilePathManager
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +59,18 @@ class TileStager():
             logger.info('Checking for footprint files...')
             missing = self.check_footprints()
             num_missing = len(missing)
-            if num_missing > 0:
+            if 0 < num_missing < 20:
                 logger.warning(
                     f'Missing footprint files for {num_missing} files: '
                     f'{missing}')
+            elif num_missing > 20:
+                logger.warning(
+                    f'Missing footprint files for {num_missing} files: '
+                    f'{len(missing)}')
+                logger.warning(
+                    f'Printing first 30 missing footprint: '
+                    f'{missing[0:30]}')
+
 
         # Configured names of properties that will be added to each polygon
         # during either staging or rasterization
@@ -581,6 +587,8 @@ class TileStager():
                 missing_footprints.append(path)
             else:
                 matching_footprints.append(footprint)
+                
+        print("Successfully matches footprints count:", len(matching_footprints))
         num_missing = len(missing_footprints)
         num_found = len(matching_footprints)
         logging.info(f'Found {num_found} matching footprints. '

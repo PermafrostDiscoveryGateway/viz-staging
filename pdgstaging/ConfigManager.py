@@ -1,7 +1,8 @@
-import logging
 import json
+import logging
 import os
-from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
+
+from .Deduplicator import deduplicate_by_footprint, deduplicate_neighbors
 
 logger = logging.getLogger(__name__)
 
@@ -1051,10 +1052,10 @@ class ConfigManager():
         path = os.path.join(dir_footprints, path + ext_footprints)
         if check_exists:
             if os.path.exists(path):
-                logger.info('Found footprint file: {}'.format(path))
+                logger.info('Successfully found footprint file: {}'.format(path))
                 return path
             else:
-                logger.info('Could not find footprint file: {}'.format(path))
+                logger.info('Failed to find footprint file: {}'.format(path))
                 raise FileNotFoundError(path)
         else:
             return path
