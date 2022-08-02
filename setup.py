@@ -20,7 +20,8 @@ setup(
         'morecantile >= 3.1, < 4.0',
         'Rtree >= 0.9, < 1.0',
         'filelock >= 3.6, < 4.0',
-        'coloraide >= 0.10, < 1'
+        'coloraide >= 0.10, < 1',
+        'colormaps @ git+https://github.com/pratiman-91/colormaps.git#egg=colormaps'
     ],
     python_requires='>=3.9, <4.0',
     classifiers=[

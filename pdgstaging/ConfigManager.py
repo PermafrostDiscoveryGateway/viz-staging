@@ -5,6 +5,7 @@ from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
 from .TilePathManager import TilePathManager
 import warnings
 from coloraide import Color
+import colormaps as cmaps
 
 logger = logging.getLogger(__name__)
 
@@ -192,9 +193,13 @@ class ConfigManager():
                         max value within a val_range is set to None, then a min
                         or max value will be calculated for the each z-level
                         for which geotiffs are created.
-                    - palette : list of str
-                        A list of colors to use for the color palette
-                      (for web-tiles)
+                    - palette : list of str or str
+                        Colors to map to pixel values when creating web-tiles.
+                        Can be provided as a list of color strings in any
+                        format accepted by the coloraide library (see:
+                        https://facelessuser.github.io/coloraide/color/), or
+                        the name of a colormap from the colormaps library (see:
+                        https://pratiman-91.github.io/colormaps).
                     - nodata_val: int or float or None or np.nan
                         The value of pixels to interpret as no data or missing
                         data. Defaults to None.
@@ -581,9 +586,9 @@ class ConfigManager():
     def get_palettes(self):
         """
             Get the colors set for each statistic in the config object,
-            including the no data color. Each item in the return list
-            can be used in instantiate a pdgraster.Palette with a color
-            gradient and nodata color.
+            including the no data color. Each item in the return list can be
+            used in instantiate a pdgraster.Palette with a color gradient and
+            nodata color.
 
             Returns
             -------
@@ -592,6 +597,7 @@ class ConfigManager():
                 [
                     [['stat1_col1', 'stat1_col2', ...], 'stat1_nodata_col' ],
                     [['stat2_col1', 'stat2_col2', ...], 'stat2_nodata_col' ],
+                    ['stat3_colormap_name', 'stat3_nodata_col'],
                     ...
                 ]
         """
@@ -749,15 +755,17 @@ class ConfigManager():
             # Get the color palette
             color_palette = self.get_stat_config(stat)['palette']
 
-            # convert all to hex codes.
-            colors = [self.to_hex(c) for c in color_palette]
+            color_objs = []
+            if isinstance(color_palette, list):
+                # convert all to hex codes.
+                colors = [self.to_hex(c) for c in color_palette]
+            elif isinstance(color_palette, str):
+                colors = self.color_list_from_cmaps(color_palette)
             num_cols = len(colors)
             # Get min and max. As the Cesium map doesn't support a different
             # palette for each z-level yet, just use the max_z palette
             minv = self.get_min(stat=stat, z=max_z, sub_general=True)
             maxv = self.get_max(stat=stat, z=max_z, sub_general=True)
-
-            color_objs = []
             for i in range(num_cols):
                 color_objs.append({
                     'color': colors[i],
@@ -1423,3 +1431,24 @@ class ConfigManager():
         if len(hex_str) == 9:
             hex_str = hex_str[:-2]
         return hex_str
+
+    @staticmethod
+    def color_list_from_cmaps(cmap_name):
+        """
+            Get a list of colors from a colormaps colormap
+
+            Parameters
+            ----------
+            cmap_name : str
+                The name of the colormaps colormap.
+
+            Returns
+            -------
+            list
+                A list of colors as hex codes, no longer than 10 colors.
+        """
+        cmap = getattr(cmaps, cmap_name)
+        pal_len = 10 if cmap.N > 10 else cmap.N
+        rgb_vals = (cmap.discrete(pal_len).colors * 255).astype(int).tolist()
+        rgb_hex = [f'#{i:02x}{j:02x}{k:02x}' for i, j, k in rgb_vals]
+        return rgb_hex

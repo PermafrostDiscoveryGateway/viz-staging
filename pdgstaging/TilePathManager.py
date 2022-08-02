@@ -611,7 +611,7 @@ class TilePathManager():
 
         for path in paths:
             dir = os.path.dirname(path)
-            if not os.path.exists(dir):
+            if dir and not os.path.exists(dir):
                 os.makedirs(dir)
 
     @staticmethod
