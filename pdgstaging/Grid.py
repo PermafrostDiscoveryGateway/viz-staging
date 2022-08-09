@@ -6,14 +6,14 @@ from geopandas import GeoDataFrame
 from shapely.geometry import box
 from numpy import linspace
 from morecantile import tms as morecantile_tms
-import matplotlib.pyplot as plt
+import warnings
 
 
 class Grid():
     """
     The Grid class represents a lattice of rows and columns, even spaced along
     projected or geographic coordinates. Each row and column has a unique
-    index, and each cell is a square.
+    index, and each cell is a square. Similar to a 'fishnet' in ArcGIS.
     """
 
     ROW_IND_NAME = 'grid_row_index'
@@ -115,7 +115,127 @@ class Grid():
                 how='union').reset_index(drop=True)
         return self._gdf_cells
 
-    def show(self):
+    def overlay(self, gdf, how='intersection', **kwargs):
+        """
+        Spatially superimpose the grid onto a GeoDataFrame of polygons. Return
+        the GeoDataFrame with new polygon shapes based on places where the
+        polygons overlap with the grid. The resulting GeoDataFrame will also
+        have a new MultiIndex comprising the grid's row and column indices.
+
+        This method uses GeoPanda's overlay method, but rather than overlaying
+        the grid cells onto the GeoDataFrame, it overlays the rows, then the
+        columns. Performing two overlay operations (rows & columns) is faster
+        than one (cells), especially with higher row and column counts, but the
+        resulting geometries are the same.
+
+        All set-operations except that are supported by GeoPandas.overlay are
+        supported by this overlay method, except for 'difference':
+          - 'intersection' (the default) will essentially slice the input
+            polygons by the grid cells. Wherever a polygon overlaps with a grid
+            cell, it will be divided along the grid lines and the resulting
+            polygons will be returned.
+          - 'union' will return both the sliced polygons from the
+            'intersection' operation as well as the grid cells geometries with
+            the areas where the polygons overlap removed.
+          - 'identity' gives the same result as 'intersection'.
+          - 'symmetric difference' will return the grid cell geometries with
+            the areas where the polygons overlap removed.
+
+        For more information about spatial set-operations and the overlay
+        method, see:
+          - https://geopandas.org/en/stable/docs/user_guide/set_operations.html
+          - https://geopandas.org/en/stable/docs/reference/api/geopandas.overlay.html
+          - https://shapely.readthedocs.io/en/stable/manual.html#set-theoretic-methods
+
+        Parameters
+        ----------
+        gdf : GeoDataFrame
+            The GeoDataFrame to overlay the grid onto. The GeoDataFrame must
+            be in the same coordinate reference system as the grid, and must
+            comprise only polygon geometries.
+        how : 'intersection', 'union', 'identity', 'symmetric difference'
+            The set-operation to perform. Default is 'intersection'.
+        **kwargs : keyword arguments
+            Keyword arguments to pass to the GeoPandas.overlay method.
+
+        Returns
+        -------
+        GeoDataFrame
+            The GeoDataFrame with new polygon shapes based on places where the
+            polygons overlap with the grid. The resulting GeoDataFrame will
+            also have a new MultiIndex comprising the grid's row and column
+            indices.
+        """
+
+        # Don't modify the original GeoDataFrame.
+        gdf_c = gdf.copy()
+
+        # Check validity of inputs
+        if how == 'difference':
+            raise NotImplementedError(
+                'The difference operation is not supported by the grid '
+                'overlay method. Use the symmetric_difference operation '
+                'instead.')
+
+        supported_methods = [
+            'intersection',
+            'union',
+            'identity',
+            'symmetric_difference']
+        if how not in supported_methods:
+            raise ValueError(
+                f'The operation "{how}" is not supported by the grid overlay '
+                'method. The supported operations are: {supported_methods}')
+
+        self.__check_all_polygons__(gdf_c)
+
+        if self.crs != gdf_c.crs:
+            if gdf_c.crs is None:
+                raise ValueError(
+                    'The GeoDataFrame requires a coordinate reference system.')
+            warnings.warn(
+                'The CRS of the GeoDataFrame does not match the CRS of the '
+                'grid. The resulting GeoDataFrame will be re-projected to the '
+                'CRS of the grid.')
+            gdf_c.to_crs(self.crs, inplace=True)
+
+        # Perform the overlay operation.
+        if how != 'symmetric_difference':
+            gdf_c_cols = gdf_c.overlay(self.gdf_cols, how, **kwargs)
+            gdf_c_rows_col = gdf_c_cols.overlay(self.gdf_rows, how, **kwargs)
+        else:
+            gdf_c_rows_col = gdf_c.overlay(self.gdf_cells, how=how, **kwargs)
+
+        # Set the new MultiIndex.
+        gdf_c_rows_col.set_index(
+            [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
+
+        return gdf_c_rows_col
+
+    def overlay_cells(self, gdf, how=None, **kwargs):
+        gdf_c = gdf.copy()
+        if(how != 'difference'):
+            gdf_c_rows_col = gdf_c.overlay(self.gdf_cells, how, **kwargs)
+            gdf_c_rows_col.set_index(
+                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
+        else:
+            gdf_c_rows_col = self.gdf_cells.overlay(gdf_c, how, **kwargs)
+        return gdf_c_rows_col
+
+    def __check_crs_match__(self, gdf):
+        if self.crs != gdf.crs:
+            raise ValueError(
+                'The grid and the GeoDataFrame do not have the same '
+                'coordinate reference system.')
+
+    @staticmethod
+    def __check_all_polygons__(gdf):
+        are_polys = gdf.geometry.type == 'Polygon'
+        if not are_polys.all():
+            raise ValueError(
+                'The GeoDataFrame must contain only polygons.')
+
+    def plot(self):
         """
         Plot the grid with matplotlib. This is useful for debugging.
         """
@@ -138,7 +258,7 @@ class Grid():
                 'COL ' + str(col[self.COL_IND_NAME]),
                 horizontalalignment='center',
                 verticalalignment='top')
-        plt.show()
+        return ax
 
 
 class TMSGrid(Grid):
