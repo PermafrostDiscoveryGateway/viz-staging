@@ -10,7 +10,7 @@ import pandas as pd
 from filelock import FileLock, Timeout
 from shapely.geometry import box
 
-from . import ConfigManager, TilePathManager
+from . import ConfigManager, TilePathManager, TMSGrid
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,6 @@ class TileStager():
                 logger.warning(
                     f'Printing first 30 missing footprint: '
                     f'{missing[0:30]}')
-
 
         # Configured names of properties that will be added to each polygon
         # during either staging or rasterization
@@ -312,10 +311,13 @@ class TileStager():
                 The GeoDataFrame to assign tiles to
         """
         grid = self.make_tms_grid(gdf)
-        gridded_gdf = gdf.sjoin(grid, how='left', predicate='intersects')
-        gridded_gdf = gridded_gdf.rename(
-            columns={'index_right': self.props['tile']})
-
+        gridded_gdf = grid.sjoin(gdf, how='left', predicate='intersects')
+        ci = grid.COL_IND_NAME
+        ri = grid.ROW_IND_NAME
+        tiles = gridded_gdf.apply(
+            lambda row: self.tiles.tile(
+                row[ci], row[ri], grid.z), axis=1)
+        gridded_gdf[self.props['tile']] = tiles
         return gridded_gdf
 
     def make_tms_grid(self, gdf):
@@ -330,27 +332,11 @@ class TileStager():
                 and used for the extent of the TMS grid.
         """
 
-        bbox = gdf.total_bounds
-        west, south, east, north = bbox
-
-        grid_cell_geoms = []
-        tiles = []
-
-        for tile in self.tiles.tms.tiles(
-                west, south, east, north, self.z_level):
-            tile_bb = self.tiles.get_bounding_box(tile)
-            grid_cell_geoms.append(box(
-                maxy=tile_bb['top'],
-                miny=tile_bb['bottom'],
-                maxx=tile_bb['right'],
-                minx=tile_bb['left']))
-            tiles.append(tile)
-
-        grid = gpd.GeoDataFrame({'geometry': grid_cell_geoms, 'tile': tiles})
-        grid = grid.set_index('tile')
-        grid = grid.set_crs(self.tiles.crs)
-
-        return grid
+        return TMSGrid(
+            tms_id=self.tiles.tms_id,
+            z=self.z_level,
+            bounds=gdf.total_bounds
+        )
 
     def which_tile(self, x, y):
         """
@@ -588,8 +574,6 @@ class TileStager():
                 missing_footprints.append(path)
             else:
                 matching_footprints.append(footprint)
-                
-        print("Successfully matches footprints count:", len(matching_footprints))
         num_missing = len(missing_footprints)
         num_found = len(matching_footprints)
         logging.info(f'Found {num_found} matching footprints. '

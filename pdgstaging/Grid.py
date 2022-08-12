@@ -122,7 +122,7 @@ class Grid():
         r_geoms = [box(minx, rf[i], maxx, rf[i + 1]) for i in range(nrows)]
         c_geoms = [box(cf[i], miny, cf[i + 1], maxy) for i in range(ncols)]
         self.gdf_rows = GeoDataFrame(
-            {self.ROW_IND_NAME: ci, 'geometry': r_geoms}, crs=self.crs)
+            {self.ROW_IND_NAME: ri, 'geometry': r_geoms}, crs=self.crs)
         self.gdf_cols = GeoDataFrame(
             {self.COL_IND_NAME: ci, 'geometry': c_geoms}, crs=self.crs)
         # TODO ^ set row & col indices as GDF index?
