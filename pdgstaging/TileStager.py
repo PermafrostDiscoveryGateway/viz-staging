@@ -78,10 +78,6 @@ class TileStager():
         # Create tiles for the maximum z-level configured
         self.z_level = self.config.get_max_z()
 
-        # Vectorize some functions
-        self.which_tiles = np.vectorize(
-            self.which_tile, otypes=[self.tiles.tile_type]
-        )
         self.get_all_tile_properties = np.vectorize(
             self.get_tile_properties, otypes=[dict]
         )
@@ -132,6 +128,7 @@ class TileStager():
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
             gdf = self.set_crs(gdf)
+            self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
             self.save_tiles(gdf)
         else:
@@ -284,10 +281,8 @@ class TileStager():
         gdf[props['identifier']] = [
             str(uuid.uuid4()) for _ in range(num_polygons)]
 
-        # Find the tiles the polygon centroid falls within
-        gdf[props['centroid_tile']] = self.which_tiles(
-            centroids.x, centroids.y)
-
+        # Find the tile the polygon falls within
+        gdf = self.assign_tile_by_centroid(gdf)
         # Find the tiles the polygon intersects
         gdf = self.assign_tile(gdf)
         centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
@@ -297,6 +292,31 @@ class TileStager():
             f'Added properties for {num_polygons} vectors in '
             f'{datetime.now() - start_time} from file {path}'
         )
+        return gdf
+
+    def assign_tile_by_centroid(self, gdf):
+        """
+            Assign the tile that the centroid of each polygon falls within.
+
+            Parameters
+            ----------
+            gdf : GeoDataFrame
+                The GeoDataFrame to assign the centroid tile to
+
+            Returns
+            -------
+            GeoDataFrame
+                The GeoDataFrame with the centroid tile assigned to each row
+        """
+        grid = self.grid
+        gdf_centroids = gdf.copy()
+        gdf_centroids['geometry'] = gpd.points_from_xy(
+            gdf[self.props['centroid_x']], gdf[self.props['centroid_y']])
+        gridded_gdf = grid.sjoin(gdf_centroids)
+        tile_col_name = self.props['centroid_tile']
+        renamed_gdf = self.grid_columns_to_tile_column(
+            gridded_gdf, tile_col_name)
+        gdf[tile_col_name] = renamed_gdf[tile_col_name]
         return gdf
 
     def assign_tile(self, gdf):
@@ -309,16 +329,28 @@ class TileStager():
             ----------
             gdf : GeoDataFrame
                 The GeoDataFrame to assign tiles to
+
+            Returns
+            -------
+            GeoDataFrame
+                The GeoDataFrame with the tile assigned to each row
+
         """
-        grid = self.make_tms_grid(gdf)
+        grid = self.grid
         gridded_gdf = grid.sjoin(gdf, how='left', predicate='intersects')
+        tile_col_name = self.props['tile']
+        return self.grid_columns_to_tile_column(gridded_gdf, tile_col_name)
+
+    def grid_columns_to_tile_column(self, gdf, tile_col_name):
+        grid = self.grid
         ci = grid.COL_IND_NAME
         ri = grid.ROW_IND_NAME
-        tiles = gridded_gdf.apply(
+        tiles = gdf.apply(
             lambda row: self.tiles.tile(
                 row[ci], row[ri], grid.z), axis=1)
-        gridded_gdf[self.props['tile']] = tiles
-        return gridded_gdf
+        gdf[tile_col_name] = tiles
+        gdf.drop(columns=[ci, ri], inplace=True)
+        return gdf
 
     def make_tms_grid(self, gdf):
         """
@@ -337,20 +369,6 @@ class TileStager():
             z=self.z_level,
             bounds=gdf.total_bounds
         )
-
-    def which_tile(self, x, y):
-        """
-            Identify which tile a pair of x and y coordinates belongs to. x, y
-            coordinates must be in the same CRS as the TMS
-
-            Parameters
-            ----------
-            x : float
-                The x coordinate to identify the tile for
-            y : float
-                The y coordinate to identify the tile for
-        """
-        return self.tiles.tms.tile(x, y, self.z_level)
 
     def save_tiles(self, gdf=None):
         """
