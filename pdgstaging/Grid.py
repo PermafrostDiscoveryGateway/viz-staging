@@ -134,9 +134,28 @@ class Grid():
         along with the associated row and column indices.
         """
         if not hasattr(self, '_gdf_cells'):
-            self._gdf_cells = self.gdf_cols.overlay(
-                self.gdf_rows,
-                how='union').reset_index(drop=True)
+
+            rf = self.row_fences
+            cf = self.col_fences
+            ri = self.row_indices
+            ci = self.col_indices
+
+            cell_geoms = []
+            row_indices = []
+            col_indices = []
+
+            for i in range(self.nrows):
+                for j in range(self.ncols):
+                    row_indices.append(ri[i])
+                    col_indices.append(ci[j])
+                    cell_geoms.append(box(cf[j], rf[i], cf[j + 1], rf[i + 1]))
+
+            self._gdf_cells = GeoDataFrame({
+                self.ROW_IND_NAME: row_indices,
+                self.COL_IND_NAME: col_indices,
+                'geometry': cell_geoms
+            }, crs=self.crs)
+
         return self._gdf_cells
 
     def overlay(self, gdf, how='intersection', **kwargs):
