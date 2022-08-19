@@ -9,6 +9,9 @@ from numpy import linspace, searchsorted, array, logical_and, logical_or
 from morecantile import tms as morecantile_tms
 from uuid import uuid4
 from warnings import warn
+from pyproj import CRS
+import numbers
+import warnings
 
 
 class Grid():
@@ -70,68 +73,407 @@ class Grid():
         self.crs = crs
         self.left_to_right = left_to_right
         self.top_to_bottom = top_to_bottom
-        self.__build_grid__()
 
-    def __build_grid__(self):
+    def __delattrs__(self, attrs):
         """
-        Build the grid.
+        Delete attributes from the grid.
         """
+        for attr in attrs:
+            try:
+                delattr(self, attr)
+            except AttributeError:
+                pass
 
-        if hasattr(self, '_gdf_cells'):
-            del self._gdf_cells
+    @property
+    def bounds(self):
+        return self._bounds
 
-        # Get min and max values for the x and y coordinates.
-        self.minx, self.miny, self.maxx, self.maxy = \
-            minx, miny, maxx, maxy = self.bounds
+    @bounds.setter
+    def bounds(self, bounds):
+        # check that each number is a float
+        try:
+            for bound in bounds:
+                # can be any numeric type
+                if not isinstance(bound, numbers.Number):
+                    raise TypeError('bounds must be a list-like object')
+        except Exception:
+            raise TypeError('bounds must be a list-like object with 4 numbers')
+        if len(bounds) != 4:
+            raise ValueError('bounds comprise exactly 4 numbers')
+        self._bounds = bounds
+        # Reset the other properties that depend on the bounds. They will be
+        # recalculated when they are accessed.
+        self.__delattrs__(['_row_fences', '_col_fences',
+                          '_gdf_rows', '_gdf_cols', '_gdf_cells'])
 
-        # Calculate height, width, area of the entire grid
-        self.height = self.maxy - self.miny
-        self.width = self.maxx - self.minx
-        self.area = self.height * self.width
+    @property
+    def nrows(self):
+        return self._nrows
 
-        # Calculate height, width, area of each grid cell
-        self.cell_height = self.height / self.nrows
-        self.cell_width = self.width / self.ncols
-        self.cell_area = self.cell_height * self.cell_width
+    @nrows.setter
+    def nrows(self, nrows):
+        if not isinstance(nrows, int):
+            raise TypeError('nrows must be an integer')
+        self._nrows = nrows
+        # Reset the other properties that depend on the number of rows. They
+        # will be recalculated when they are accessed.
+        self.__delattrs__(['_row_indices', '_row_fences', '_gdf_rows',
+                           '_gdf_cells'])
 
-        # Get number of rows and columns
-        nrows = self.nrows
-        ncols = self.ncols
-        self.ncells = nrows * ncols
+    @property
+    def ncols(self):
+        return self._ncols
 
-        # Calculate the location of the x and y grid lines (i.e. fences)
-        self.row_fences = rf = linspace(miny, maxy, nrows + 1)
-        self.col_fences = cf = linspace(minx, maxx, ncols + 1)
+    @ncols.setter
+    def ncols(self, ncols):
+        if not isinstance(ncols, int):
+            raise TypeError('ncols must be an integer')
+        self._ncols = ncols
+        # Reset the other properties that depend on the number of columns. They
+        # will be recalculated when they are accessed.
+        self.__delattrs__(['_col_indices', '_col_fences',
+                           '_gdf_cols', '_gdf_cells'])
 
-        # Calculate the row and column indices
-        first_row_i = self.first_row_i
-        first_col_i = self.first_col_i
+    @property
+    def first_row_i(self):
+        return self._first_row_i
 
-        last_row_i = first_row_i + nrows
-        last_col_i = first_col_i + ncols
+    @first_row_i.setter
+    def first_row_i(self, first_row_i):
+        if not isinstance(first_row_i, int):
+            raise TypeError('first_row_i must be an integer')
+        self._first_row_i = first_row_i
+        # Reset the other properties that depend on the first row index. They
+        # will be recalculated when they are accessed.
+        self.__delattrs__(['_row_indices', '_gdf_rows', '_gdf_cells'])
 
-        self.row_indices = ri = list(range(first_row_i, last_row_i))
-        self.col_indices = ci = list(range(first_col_i, last_col_i))
+    @property
+    def first_col_i(self):
+        return self._first_col_i
 
-        if not self.left_to_right:
-            self.col_indices = ci = ci[::-1]
-        if self.top_to_bottom:
-            self.row_indices = ri = ri[::-1]
+    @first_col_i.setter
+    def first_col_i(self, first_col_i):
+        if not isinstance(first_col_i, int):
+            raise TypeError('first_col_i must be an integer')
+        self._first_col_i = first_col_i
+        # Reset the other properties that depend on the first column index. They
+        # will be recalculated when they are accessed.
+        self.__delattrs__(['_col_indices', '_gdf_cols', '_gdf_cells'])
 
-        # Make row and column geodataframes
-        r_geoms = [box(minx, rf[i], maxx, rf[i + 1]) for i in range(nrows)]
-        c_geoms = [box(cf[i], miny, cf[i + 1], maxy) for i in range(ncols)]
-        self.gdf_rows = GeoDataFrame(
-            {self.ROW_IND_NAME: ri, 'geometry': r_geoms}, crs=self.crs)
-        self.gdf_cols = GeoDataFrame(
-            {self.COL_IND_NAME: ci, 'geometry': c_geoms}, crs=self.crs)
-        # TODO ^ set row & col indices as GDF index?
+    @property
+    def crs(self):
+        """
+        The coordinate reference system of the grid. This can be any value that
+        is accepted by pyproj.CRS.from_user_input().
+        """
+        return self._crs
+
+    @crs.setter
+    def crs(self, crs):
+        try:
+            CRS.from_user_input(crs)
+        except Exception:
+            raise TypeError(
+                'crs must be a valid coordinate reference system.'
+                'See pyproj.CRS.from_user_input() for more on valid formats.')
+        self._crs = crs
+        # Reset the other properties that depend on the coordinate reference
+        # system. They will be recalculated when they are accessed.
+        self.__delattrs__(['_gdf_rows', '_gdf_cols', '_gdf_cells'])
+
+    @property
+    def left_to_right(self):
+        return self._left_to_right
+
+    @left_to_right.setter
+    def left_to_right(self, left_to_right):
+        if not isinstance(left_to_right, bool):
+            raise TypeError('left_to_right must be a boolean')
+        self._left_to_right = left_to_right
+        # Reset the other properties that depend on the left to right ordering.
+        # They will be recalculated when they are accessed.
+        self.__delattrs__(['_col_indices', '_gdf_cols', '_gdf_cells'])
+
+    @property
+    def top_to_bottom(self):
+        return self._top_to_bottom
+
+    @top_to_bottom.setter
+    def top_to_bottom(self, top_to_bottom):
+        if not isinstance(top_to_bottom, bool):
+            raise TypeError('top_to_bottom must be a boolean')
+        self._top_to_bottom = top_to_bottom
+        # Reset the other properties that depend on the top to bottom ordering.
+        # They will be recalculated when they are accessed.
+        self.__delattrs__(['_row_indices', '_gdf_rows', '_gdf_cells'])
+
+    @property
+    def minx(self):
+        """
+        The minimum x coordinate of the grid.
+        """
+        return self.bounds[0]
+
+    @minx.setter
+    def minx(self, minx):
+        bounds = self.bounds
+        bounds[0] = minx
+        self.bounds = bounds
+
+    @property
+    def maxx(self):
+        """
+        The maximum x coordinate of the grid.
+        """
+        return self.bounds[2]
+
+    @maxx.setter
+    def maxx(self, maxx):
+        bounds = self.bounds
+        bounds[2] = maxx
+        self.bounds = bounds
+
+    @property
+    def miny(self):
+        """
+        The minimum y coordinate of the grid.
+        """
+        return self.bounds[1]
+
+    @miny.setter
+    def miny(self, miny):
+        bounds = self.bounds
+        bounds[1] = miny
+        self.bounds = bounds
+
+    @property
+    def maxy(self):
+        """
+        The maximum y coordinate of the grid.
+        """
+        return self.bounds[3]
+
+    @maxy.setter
+    def maxy(self, maxy):
+        bounds = self.bounds
+        bounds[3] = maxy
+        self.bounds = bounds
+
+    @property
+    def height(self):
+        """
+        The height of the grid, in units specified by the grid's CRS.
+        """
+        return self.maxy - self.miny
+
+    @height.setter
+    def height(self, height):
+        if not isinstance(height, numbers.Number):
+            raise TypeError('height must be a number')
+        if height <= 0:
+            raise ValueError('height must be positive')
+        warnings.warn('height will be set relative to miny', UserWarning)
+        bounds = self.bounds
+        bounds[3] = self.miny + height
+        self.bounds = bounds
+
+    @property
+    def width(self):
+        """
+        The width of the grid, in units specified by the grid's CRS.
+        """
+        return self.maxx - self.minx
+
+    @width.setter
+    def width(self, width):
+        if not isinstance(width, numbers.Number):
+            raise TypeError('width must be a number')
+        if width <= 0:
+            raise ValueError('width must be positive')
+        warnings.warn('width will be set relative to minx', UserWarning)
+        bounds = self.bounds
+        bounds[2] = self.minx + width
+        self.bounds = bounds
+
+    @property
+    def area(self):
+        return self.height * self.width
+
+    @property
+    def cell_height(self):
+        """
+        The height of each grid cell, in units specified by the grid's CRS.
+        """
+        return self.height / self.nrows
+
+    @property
+    def cell_width(self):
+        """
+        The width of each grid cell, in units specified by the grid's CRS.
+        """
+        return self.width / self.ncols
+
+    @property
+    def cell_area(self):
+        """
+        The area of each grid cell, in units specified by the CRS.
+        """
+        return self.cell_height * self.cell_width
+
+    @property
+    def ncells(self):
+        """
+        The number of cells in the grid.
+        """
+        return self.nrows * self.ncols
+
+    @property
+    def row_indices(self):
+        """
+        The row indices of the grid, in the order they are numbered.
+        """
+        if not hasattr(self, '_row_indices'):
+            first_row_i = self.first_row_i
+            last_row_i = first_row_i + self.nrows
+            self._row_indices = list(range(first_row_i, last_row_i))
+            if self.top_to_bottom:
+                self._row_indices = self._row_indices[::-1]
+        return self._row_indices
+
+    @row_indices.setter
+    def row_indices(self, row_indices):
+        try:
+            for ind in row_indices:
+                if not isinstance(ind, int):
+                    raise TypeError('row_indices must be a list of integers')
+        except Exception:
+            raise TypeError('row_indices must be a list-like object')
+
+        if len(row_indices) != self.nrows:
+            warnings.warn('The number of rows in the grid will be updated to'
+                          ' match the number of row indices provided',
+                          UserWarning)
+            self.nrows = len(row_indices)
+
+        if row_indices[0] != self.first_row_i:
+            warnings.warn('The first row index in the grid will be updated to'
+                          ' match the first row index provided',
+                          UserWarning)
+            self.first_row_i = row_indices[0]
+
+        if row_indices[0] > row_indices[-1] and self.top_to_bottom:
+            warnings.warn('The top to bottom ordering of the grid will be'
+                          ' reversed', UserWarning)
+            self.top_to_bottom = False
+
+        if row_indices[0] < row_indices[-1] and not self.top_to_bottom:
+            warnings.warn('The top to bottom ordering of the grid will be'
+                          ' reversed', UserWarning)
+            self.top_to_bottom = True
+
+        self._row_indices = row_indices
+
+    @property
+    def col_indices(self):
+        """
+        The column indices of the grid, in the order they are numbered.
+        """
+        if not hasattr(self, '_col_indices'):
+            first_col_i = self.first_col_i
+            last_col_i = first_col_i + self.ncols
+            self._col_indices = list(range(first_col_i, last_col_i))
+            if not self.left_to_right:
+                self._col_indices = self._col_indices[::-1]
+        return self._col_indices
+
+    @col_indices.setter
+    def col_indices(self, col_indices):
+        try:
+            for ind in col_indices:
+                if not isinstance(ind, int):
+                    raise TypeError('col_indices must be a list of integers')
+        except Exception:
+            raise TypeError('col_indices must be a list-like object')
+
+        if len(col_indices) != self.ncols:
+            warnings.warn('The number of columns in the grid will be updated to'
+                          ' match the number of column indices provided',
+                          UserWarning)
+            self.ncols = len(col_indices)
+
+        if col_indices[0] != self.first_col_i:
+            warnings.warn('The first column index in the grid will be updated to'
+                          ' match the first column index provided',
+                          UserWarning)
+            self.first_col_i = col_indices[0]
+
+        if col_indices[0] > col_indices[-1] and self.left_to_right:
+            warnings.warn('The left to right ordering of the grid will be'
+                          ' reversed', UserWarning)
+            self.left_to_right = False
+
+        if col_indices[0] < col_indices[-1] and not self.left_to_right:
+            warnings.warn('The left to right ordering of the grid will be'
+                          ' reversed', UserWarning)
+            self.left_to_right = True
+
+        self._col_indices = col_indices
+
+    @property
+    def row_fences(self):
+        """
+        The row fences of the grid, i.e. the y coordinates of the grid lines.
+        """
+        if not hasattr(self, '_row_fences'):
+            self._row_fences = linspace(self.miny, self.maxy, self.nrows + 1)
+        return self._row_fences
+
+    @property
+    def col_fences(self):
+        """
+        The column fences of the grid, i.e. the x coordinates of the grid lines.
+        """
+        if not hasattr(self, '_col_fences'):
+            self._col_fences = linspace(self.minx, self.maxx, self.ncols + 1)
+        return self._col_fences
+
+    @property
+    def gdf_rows(self):
+        """
+        Return a GeoDataFrame of the rows of the grid.
+        """
+        if not hasattr(self, '_gdf_rows'):
+            nrows = self.nrows
+            minx = self.minx
+            maxx = self.maxx
+            rf = self.row_fences
+            ri = self.row_indices
+            r_geoms = [box(minx, rf[i], maxx, rf[i + 1]) for i in range(nrows)]
+            self._gdf_rows = GeoDataFrame(
+                {self.ROW_IND_NAME: ri, 'geometry': r_geoms}, crs=self.crs)
+        return self._gdf_rows
+
+    @property
+    def gdf_cols(self):
+        """
+        Return a GeoDataFrame of the columns of the grid.
+        """
+        if not hasattr(self, '_gdf_cols'):
+            ncols = self.ncols
+            miny = self.miny
+            maxy = self.maxy
+            cf = self.col_fences
+            ci = self.col_indices
+            c_geoms = [box(cf[i], miny, cf[i + 1], maxy) for i in range(ncols)]
+            self._gdf_cols = GeoDataFrame(
+                {self.COL_IND_NAME: ci, 'geometry': c_geoms}, crs=self.crs)
+        return self._gdf_cols
 
     @property
     def gdf_cells(self):
         """
-        Return a GeoDataFrame with one geometry for each cell in the grid,
-        along with the associated row and column indices.
+        A GeoDataFrame with one geometry for each cell in the grid, along with
+        the associated row and column indices.
         """
         if not hasattr(self, '_gdf_cells'):
 
