@@ -539,11 +539,12 @@ class Grid():
         indices. If the goal is not to create new geometries, then use the
         Grid.sjoin method.
 
-        This method uses GeoPanda's overlay method, but rather than overlaying
-        the grid cells onto the GeoDataFrame, it overlays the rows, then the
-        columns. Performing two overlay operations (rows & columns) is faster
-        than one (cells), especially with higher row and column counts, but the
-        resulting geometries are the same.
+        This method uses GeoPanda's overlay method, but when there are more
+        cell geometries in the grid than there are polygons in the given
+        GeoDataFrame, rather than overlaying the grid cells onto the
+        GeoDataFrame, it overlays the rows, then the columns. Performing two
+        overlay operations (rows & columns) is faster than one (cells) in this
+        case, but the resulting geometries are the same.
 
         All set-operations except that are supported by GeoPandas.overlay are
         supported by this overlay method, except for 'difference':
@@ -607,12 +608,24 @@ class Grid():
         self.__all_geom_type__(gdf_c, 'Polygon', True)
         gdf_c = self.__check_crs_match__(gdf_c)
 
-        # Perform the overlay operation.
-        if how != 'symmetric_difference':
-            gdf_c_cols = gdf_c.overlay(self.gdf_cols, how, **kwargs)
-            gdf_c_rows_col = gdf_c_cols.overlay(self.gdf_rows, how, **kwargs)
+        # Perform the overlay operation. Overlay rows, then columns, when there
+        # are more cells than half the number of polygons. Otherwise, perform
+        # the operation on the cells.
+        if how != 'symmetric_difference' and self.ncells > (len(gdf_c) / 2):
+            gdf_c_cols = gdf_c \
+                .overlay(self.gdf_cols, how, keep_geom_type=False, **kwargs) \
+                .explode(index_parts=False)
+            gdf_c_rows_col = gdf_c_cols \
+                .overlay(self.gdf_rows, how, keep_geom_type=False, **kwargs) \
+                .explode(index_parts=False)
         else:
-            gdf_c_rows_col = gdf_c.overlay(self.gdf_cells, how=how, **kwargs)
+            gdf_c_rows_col = gdf_c \
+                .overlay(
+                    self.gdf_cells, how=how, keep_geom_type=False, **kwargs) \
+                .explode(index_parts=False)
+
+        # explode in case there are multiple polygons in each cell
+        gdf_c_rows_col = gdf_c_rows_col.explode()
 
         # Set the new MultiIndex.
         gdf_c_rows_col.set_index(
