@@ -10,14 +10,13 @@ from morecantile import tms as morecantile_tms
 from uuid import uuid4
 from warnings import warn
 from pyproj import CRS
-import numbers
-import warnings
+from numbers import Number
 
 
 class Grid():
     """
     The Grid class represents a lattice of rows and columns, evenly spaced
-    along projected or geographic coordinates. Rows and columns are each
+    along a given coordinate reference system. Rows and columns are each
     assigned a unique integer index, starting at 0 or some other specified
     integer and increasing consecutively in steps of 1 (i.e. rows that are
     adjacent to each other have index n and n+1).
@@ -86,28 +85,36 @@ class Grid():
 
     @property
     def bounds(self):
+        """
+        list-like of numbers : The west, south, east, and north bounds of the
+        grid (in that order), in the grid's coordinate reference system.
+        Changing the bounds of the grid will update the row & column fences, as
+        well as the row, column, and cell GeoDataFrames.
+        """
         return self._bounds
 
     @bounds.setter
     def bounds(self, bounds):
-        # check that each number is a float
         try:
             for bound in bounds:
                 # can be any numeric type
-                if not isinstance(bound, numbers.Number):
+                if not isinstance(bound, Number):
                     raise TypeError('bounds must be a list-like object')
         except Exception:
             raise TypeError('bounds must be a list-like object with 4 numbers')
         if len(bounds) != 4:
             raise ValueError('bounds comprise exactly 4 numbers')
         self._bounds = bounds
-        # Reset the other properties that depend on the bounds. They will be
-        # recalculated when they are accessed.
         self.__delattrs__(['_row_fences', '_col_fences',
                           '_gdf_rows', '_gdf_cols', '_gdf_cells'])
 
     @property
     def nrows(self):
+        """
+        int : The number of rows in the grid. Changing this property will
+        automatically update the row indices, row fences, and row & cell
+        GeoDataFrames.
+        """
         return self._nrows
 
     @nrows.setter
@@ -115,13 +122,16 @@ class Grid():
         if not isinstance(nrows, int):
             raise TypeError('nrows must be an integer')
         self._nrows = nrows
-        # Reset the other properties that depend on the number of rows. They
-        # will be recalculated when they are accessed.
         self.__delattrs__(['_row_indices', '_row_fences', '_gdf_rows',
                            '_gdf_cells'])
 
     @property
     def ncols(self):
+        """
+        int : The number of columns in the grid. Changing this property will
+        automatically update the column indices, column fences, and column &
+        cell GeoDataFrames.
+        """
         return self._ncols
 
     @ncols.setter
@@ -129,13 +139,16 @@ class Grid():
         if not isinstance(ncols, int):
             raise TypeError('ncols must be an integer')
         self._ncols = ncols
-        # Reset the other properties that depend on the number of columns. They
-        # will be recalculated when they are accessed.
         self.__delattrs__(['_col_indices', '_col_fences',
                            '_gdf_cols', '_gdf_cells'])
 
     @property
     def first_row_i(self):
+        """
+        int : The integer to use as the index of the first row. Changing this
+        property will automatically update the row indices, as well as the row
+        & cell GeoDataFrames.
+        """
         return self._first_row_i
 
     @first_row_i.setter
@@ -143,12 +156,15 @@ class Grid():
         if not isinstance(first_row_i, int):
             raise TypeError('first_row_i must be an integer')
         self._first_row_i = first_row_i
-        # Reset the other properties that depend on the first row index. They
-        # will be recalculated when they are accessed.
         self.__delattrs__(['_row_indices', '_gdf_rows', '_gdf_cells'])
 
     @property
     def first_col_i(self):
+        """
+        int : The integer to use as the index of the first column. Changing
+        this property will automatically update the column indices, as well as
+        the column & cell GeoDataFrames.
+        """
         return self._first_col_i
 
     @first_col_i.setter
@@ -156,15 +172,13 @@ class Grid():
         if not isinstance(first_col_i, int):
             raise TypeError('first_col_i must be an integer')
         self._first_col_i = first_col_i
-        # Reset the other properties that depend on the first column index. They
-        # will be recalculated when they are accessed.
         self.__delattrs__(['_col_indices', '_gdf_cols', '_gdf_cells'])
 
     @property
     def crs(self):
         """
-        The coordinate reference system of the grid. This can be any value that
-        is accepted by pyproj.CRS.from_user_input().
+        any : The coordinate reference system of the grid. This can be any
+        value that is accepted by pyproj.CRS.from_user_input().
         """
         return self._crs
 
@@ -177,12 +191,16 @@ class Grid():
                 'crs must be a valid coordinate reference system.'
                 'See pyproj.CRS.from_user_input() for more on valid formats.')
         self._crs = crs
-        # Reset the other properties that depend on the coordinate reference
-        # system. They will be recalculated when they are accessed.
         self.__delattrs__(['_gdf_rows', '_gdf_cols', '_gdf_cells'])
 
     @property
     def left_to_right(self):
+        """
+        bool : When True (default) the grid columns are numbered from left to
+        right, otherwise they are numbered from right to left. Changing this
+        property will automatically update the column indices, and the column &
+        cell GeoDataFrames.
+        """
         return self._left_to_right
 
     @left_to_right.setter
@@ -190,12 +208,16 @@ class Grid():
         if not isinstance(left_to_right, bool):
             raise TypeError('left_to_right must be a boolean')
         self._left_to_right = left_to_right
-        # Reset the other properties that depend on the left to right ordering.
-        # They will be recalculated when they are accessed.
         self.__delattrs__(['_col_indices', '_gdf_cols', '_gdf_cells'])
 
     @property
     def top_to_bottom(self):
+        """
+        bool : When True (default) the grid rows are numbered from top to
+        bottom, otherwise they are numbered from bottom to top. Changing this
+        property will automatically update the row indices, and the row & cell
+        GeoDataFrames.
+        """
         return self._top_to_bottom
 
     @top_to_bottom.setter
@@ -203,14 +225,15 @@ class Grid():
         if not isinstance(top_to_bottom, bool):
             raise TypeError('top_to_bottom must be a boolean')
         self._top_to_bottom = top_to_bottom
-        # Reset the other properties that depend on the top to bottom ordering.
-        # They will be recalculated when they are accessed.
         self.__delattrs__(['_row_indices', '_gdf_rows', '_gdf_cells'])
 
     @property
     def minx(self):
         """
-        The minimum x coordinate of the grid.
+        number : The minimum x coordinate of the grid bounds (e.g. the west
+        bound). Changing this property will automatically update the bounds,
+        row & column fences, as well as the row, column, and cell
+        GeoDataFrames.
         """
         return self.bounds[0]
 
@@ -223,7 +246,9 @@ class Grid():
     @property
     def maxx(self):
         """
-        The maximum x coordinate of the grid.
+        number : The maximum x coordinate of the grid. (e.g. the east bound).
+        Changing this property will automatically update the bounds, row &
+        column fences, as well as the row, column, and cell GeoDataFrames.
         """
         return self.bounds[2]
 
@@ -236,7 +261,9 @@ class Grid():
     @property
     def miny(self):
         """
-        The minimum y coordinate of the grid.
+        number : The minimum y coordinate of the grid. (e.g. the south bound).
+        Changing this property will automatically update the bounds, row &
+        column fences, as well as the row, column, and cell GeoDataFrames.
         """
         return self.bounds[1]
 
@@ -249,7 +276,9 @@ class Grid():
     @property
     def maxy(self):
         """
-        The maximum y coordinate of the grid.
+        number : The maximum y coordinate of the grid. (e.g. the north bound).
+        Changing this property will automatically update the bounds, row &
+        column fences, as well as the row, column, and cell GeoDataFrames.
         """
         return self.bounds[3]
 
@@ -262,17 +291,19 @@ class Grid():
     @property
     def height(self):
         """
-        The height of the grid, in units specified by the grid's CRS.
+        number : The height of the grid. Changing this property will
+        automatically update the bounds, row & column fences, as well as the
+        row, column, and cell GeoDataFrames. The new bounds will be the old
+        bounds with the new maxy set to the old maxy + height.
         """
         return self.maxy - self.miny
 
     @height.setter
     def height(self, height):
-        if not isinstance(height, numbers.Number):
+        if not isinstance(height, Number):
             raise TypeError('height must be a number')
         if height <= 0:
             raise ValueError('height must be positive')
-        warnings.warn('height will be set relative to miny', UserWarning)
         bounds = self.bounds
         bounds[3] = self.miny + height
         self.bounds = bounds
@@ -280,57 +311,30 @@ class Grid():
     @property
     def width(self):
         """
-        The width of the grid, in units specified by the grid's CRS.
+        number : The width of the grid. Changing this property will
+        automatically update the bounds, row & column fences, as well as the
+        row, column, and cell GeoDataFrames. The new bounds will be the old
+        bounds with the new maxx set to the old maxx + width.
         """
         return self.maxx - self.minx
 
     @width.setter
     def width(self, width):
-        if not isinstance(width, numbers.Number):
+        if not isinstance(width, Number):
             raise TypeError('width must be a number')
         if width <= 0:
             raise ValueError('width must be positive')
-        warnings.warn('width will be set relative to minx', UserWarning)
         bounds = self.bounds
         bounds[2] = self.minx + width
         self.bounds = bounds
 
     @property
-    def area(self):
-        return self.height * self.width
-
-    @property
-    def cell_height(self):
-        """
-        The height of each grid cell, in units specified by the grid's CRS.
-        """
-        return self.height / self.nrows
-
-    @property
-    def cell_width(self):
-        """
-        The width of each grid cell, in units specified by the grid's CRS.
-        """
-        return self.width / self.ncols
-
-    @property
-    def cell_area(self):
-        """
-        The area of each grid cell, in units specified by the CRS.
-        """
-        return self.cell_height * self.cell_width
-
-    @property
-    def ncells(self):
-        """
-        The number of cells in the grid.
-        """
-        return self.nrows * self.ncols
-
-    @property
     def row_indices(self):
         """
-        The row indices of the grid, in the order they are numbered.
+        like-like of int : The row indices of the grid, in order. Changing this
+        property will automatically update the row & cell GeoDataFrames, the
+        number of rows (nrows property), the first_row_i property, and the
+        top_to_bottom property.
         """
         if not hasattr(self, '_row_indices'):
             first_row_i = self.first_row_i
@@ -350,25 +354,15 @@ class Grid():
             raise TypeError('row_indices must be a list-like object')
 
         if len(row_indices) != self.nrows:
-            warnings.warn('The number of rows in the grid will be updated to'
-                          ' match the number of row indices provided',
-                          UserWarning)
             self.nrows = len(row_indices)
 
         if row_indices[0] != self.first_row_i:
-            warnings.warn('The first row index in the grid will be updated to'
-                          ' match the first row index provided',
-                          UserWarning)
             self.first_row_i = row_indices[0]
 
         if row_indices[0] > row_indices[-1] and self.top_to_bottom:
-            warnings.warn('The top to bottom ordering of the grid will be'
-                          ' reversed', UserWarning)
             self.top_to_bottom = False
 
         if row_indices[0] < row_indices[-1] and not self.top_to_bottom:
-            warnings.warn('The top to bottom ordering of the grid will be'
-                          ' reversed', UserWarning)
             self.top_to_bottom = True
 
         self._row_indices = row_indices
@@ -376,7 +370,10 @@ class Grid():
     @property
     def col_indices(self):
         """
-        The column indices of the grid, in the order they are numbered.
+        like-like of int : The column indices of the grid, in order. Changing
+        this property will automatically update the column & cell
+        GeoDataFrames, the number of columns (ncols property), the first_col_i
+        property, and the left_to_right property.
         """
         if not hasattr(self, '_col_indices'):
             first_col_i = self.first_col_i
@@ -396,33 +393,63 @@ class Grid():
             raise TypeError('col_indices must be a list-like object')
 
         if len(col_indices) != self.ncols:
-            warnings.warn('The number of columns in the grid will be updated to'
-                          ' match the number of column indices provided',
-                          UserWarning)
             self.ncols = len(col_indices)
 
         if col_indices[0] != self.first_col_i:
-            warnings.warn('The first column index in the grid will be updated to'
-                          ' match the first column index provided',
-                          UserWarning)
             self.first_col_i = col_indices[0]
 
         if col_indices[0] > col_indices[-1] and self.left_to_right:
-            warnings.warn('The left to right ordering of the grid will be'
-                          ' reversed', UserWarning)
             self.left_to_right = False
 
         if col_indices[0] < col_indices[-1] and not self.left_to_right:
-            warnings.warn('The left to right ordering of the grid will be'
-                          ' reversed', UserWarning)
             self.left_to_right = True
 
         self._col_indices = col_indices
 
     @property
+    def area(self):
+        """
+        number : The area of the grid in square meters. This property is
+        read-only.
+        """
+        return self.height * self.width
+
+    @property
+    def cell_height(self):
+        """
+        number : The height of each grid cell, in units specified by the grid's
+        CRS. This property is read-only.
+        """
+        return self.height / self.nrows
+
+    @property
+    def cell_width(self):
+        """
+        number: The width of each grid cell, in units specified by the grid's
+        CRS. This property is read-only.
+        """
+        return self.width / self.ncols
+
+    @property
+    def cell_area(self):
+        """
+        number: The area of each grid cell, in units specified by the CRS. This
+        property is read-only.
+        """
+        return self.cell_height * self.cell_width
+
+    @property
+    def ncells(self):
+        """
+        int : The number of cells in the grid. This property is read-only.
+        """
+        return self.nrows * self.ncols
+
+    @property
     def row_fences(self):
         """
-        The row fences of the grid, i.e. the y coordinates of the grid lines.
+        list of number : The row fences of the grid, i.e. the y coordinates of
+        the grid lines. This property is read-only.
         """
         if not hasattr(self, '_row_fences'):
             self._row_fences = linspace(self.miny, self.maxy, self.nrows + 1)
@@ -431,7 +458,8 @@ class Grid():
     @property
     def col_fences(self):
         """
-        The column fences of the grid, i.e. the x coordinates of the grid lines.
+        list of number : The column fences of the grid, i.e. the x coordinates
+        of the grid lines. This property is read-only.
         """
         if not hasattr(self, '_col_fences'):
             self._col_fences = linspace(self.minx, self.maxx, self.ncols + 1)
@@ -440,7 +468,8 @@ class Grid():
     @property
     def gdf_rows(self):
         """
-        Return a GeoDataFrame of the rows of the grid.
+        GeoDataFrame : Return a GeoDataFrame of polygons covering each row in
+        the grid, indexed by the row indices. This property is read-only.
         """
         if not hasattr(self, '_gdf_rows'):
             nrows = self.nrows
@@ -456,7 +485,8 @@ class Grid():
     @property
     def gdf_cols(self):
         """
-        Return a GeoDataFrame of the columns of the grid.
+        GeoDataFrame : Return a GeoDataFrame of polygons covering each column
+        in the grid, indexed by the column indices. This property is read-only.
         """
         if not hasattr(self, '_gdf_cols'):
             ncols = self.ncols
@@ -472,8 +502,8 @@ class Grid():
     @property
     def gdf_cells(self):
         """
-        A GeoDataFrame with one geometry for each cell in the grid, along with
-        the associated row and column indices.
+        GeoDataFrame : A GeoDataFrame with one polygon for each cell in the
+        grid, along with the associated row and column indices.
         """
         if not hasattr(self, '_gdf_cells'):
 
@@ -650,8 +680,8 @@ class Grid():
                 return self.__sjoin_points__(gdf, how)
             if self.__all_geom_type__(gdf, 'Polygon'):
                 return self.__sjoin_polygons__(gdf, how)
-        # Otherwise, use the built-in geopandas sjoin method with the GDF
-        # of grid cells (slowest)
+        # Otherwise, use the built-in geopandas sjoin method with the GDF of
+        # grid cells (slowest)
         else:
             return self.__sjoin_cells__(gdf, how, predicate)
 
@@ -747,8 +777,7 @@ class Grid():
         ci = self.COL_IND_NAME
         idc = self.ID
 
-        # make a temporary ID number
-        # gdf_c[idc] = range(len(gdf_c))
+        # make a temporary ID number gdf_c[idc] = range(len(gdf_c))
         x = array(gdf_c.geometry.x)
         y = array(gdf_c.geometry.y)
 
@@ -878,8 +907,8 @@ class Grid():
 class TMSGrid(Grid):
     """
     The TMSGrid class represents a grid that follows one of the OGC
-    TileMatrixSets for a specific bounding box and a single z-level.
-    Uses morecantile: https://developmentseed.org/morecantile/
+    TileMatrixSets for a specific bounding box and a single z-level. Uses
+    morecantile: https://developmentseed.org/morecantile/
     """
 
     def __init__(self, tms_id, z, bounds):
@@ -889,14 +918,14 @@ class TMSGrid(Grid):
         Parameters
         ----------
         tms_id : str
-            The ID of the TileMatrixSet. See morecantile.tms.list() for a
-            list of available TileMatrixSets.
+            The ID of the TileMatrixSet. See morecantile.tms.list() for a list
+            of available TileMatrixSets.
         z : int
             The z-level of the grid.
         bounds : list of floats
-            The minimum bounds for the grid. All tiles that these bounds
-            cover will be included in the grid, and the subsequent grid
-            bounds will be expanded to include all tiles.
+            The minimum bounds for the grid. All tiles that these bounds cover
+            will be included in the grid, and the subsequent grid bounds will
+            be expanded to include all tiles.
         """
 
         self.z = z
