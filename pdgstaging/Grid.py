@@ -624,9 +624,6 @@ class Grid():
                     self.gdf_cells, how=how, keep_geom_type=False, **kwargs) \
                 .explode(index_parts=False)
 
-        # explode in case there are multiple polygons in each cell
-        gdf_c_rows_col = gdf_c_rows_col.explode()
-
         # Set the new MultiIndex.
         gdf_c_rows_col.set_index(
             [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
