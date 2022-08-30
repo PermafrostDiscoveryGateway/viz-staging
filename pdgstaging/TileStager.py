@@ -7,8 +7,7 @@ from datetime import datetime
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from filelock import FileLock, Timeout
-from shapely.geometry import box
+from filelock import FileLock
 
 from . import ConfigManager, TilePathManager, TMSGrid
 
@@ -308,15 +307,9 @@ class TileStager():
             GeoDataFrame
                 The GeoDataFrame with the centroid tile assigned to each row
         """
-        grid = self.grid
-        gdf_centroids = gdf.copy()
-        gdf_centroids['geometry'] = gpd.points_from_xy(
-            gdf[self.props['centroid_x']], gdf[self.props['centroid_y']])
-        gridded_gdf = grid.sjoin(gdf_centroids)
-        tile_col_name = self.props['centroid_tile']
-        renamed_gdf = self.grid_columns_to_tile_column(
-            gridded_gdf, tile_col_name)
-        gdf[tile_col_name] = renamed_gdf[tile_col_name]
+        gdf[self.props['centroid_tile']] = self.grid.tiles_from_xy(
+            gdf[self.props['centroid_x']], gdf[self.props['centroid_y']]
+        )
         return gdf
 
     def assign_tile(self, gdf):
@@ -336,21 +329,11 @@ class TileStager():
                 The GeoDataFrame with the tile assigned to each row
 
         """
-        grid = self.grid
-        gridded_gdf = grid.sjoin(gdf, how='left', predicate='intersects')
-        tile_col_name = self.props['tile']
-        return self.grid_columns_to_tile_column(gridded_gdf, tile_col_name)
-
-    def grid_columns_to_tile_column(self, gdf, tile_col_name):
-        grid = self.grid
-        ci = grid.COL_IND_NAME
-        ri = grid.ROW_IND_NAME
-        tiles = gdf.apply(
-            lambda row: self.tiles.tile(
-                row[ci], row[ri], grid.z), axis=1)
-        gdf[tile_col_name] = tiles
-        gdf.drop(columns=[ci, ri], inplace=True)
-        return gdf
+        return self.grid.sjoin(
+            gdf,
+            how='left',
+            predicate='intersects',
+            as_tile=True)
 
     def make_tms_grid(self, gdf):
         """
@@ -363,12 +346,13 @@ class TileStager():
                 The GeoDataFrame from which a bounding box will be calculated
                 and used for the extent of the TMS grid.
         """
-
-        return TMSGrid(
+        grid = TMSGrid(
             tms_id=self.tiles.tms_id,
             z=self.z_level,
             bounds=gdf.total_bounds
         )
+        grid.TILE_NAME = self.props['tile']
+        return grid
 
     def save_tiles(self, gdf=None):
         """

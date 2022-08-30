@@ -6,7 +6,7 @@ from geopandas import GeoDataFrame
 from pandas import DataFrame
 from shapely.geometry import box
 from numpy import linspace, searchsorted, array, logical_and, logical_or
-from morecantile import tms as morecantile_tms
+import morecantile
 from uuid import uuid4
 from warnings import warn
 from pyproj import CRS
@@ -530,21 +530,20 @@ class Grid():
 
         return self._gdf_cells
 
-    def overlay(self, gdf, how='intersection', **kwargs):
+    def overlay(self, gdf, how='intersection', as_index=False, **kwargs):
         """
         Spatially superimpose the grid onto a GeoDataFrame of polygons, and
         return the GeoDataFrame with new polygon shapes based on places where
         the polygons overlap with the grid. The resulting GeoDataFrame will
-        also have a new MultiIndex comprising the grid's row and column
-        indices. If the goal is not to create new geometries, then use the
-        Grid.sjoin method.
+        give the grid's row and column indices for each polygon. If the goal is
+        not to create new geometries, then use the Grid.sjoin method.
 
-        This method uses GeoPanda's overlay method, but when there are more
-        cell geometries in the grid than there are polygons in the given
-        GeoDataFrame, rather than overlaying the grid cells onto the
-        GeoDataFrame, it overlays the rows, then the columns. Performing two
-        overlay operations (rows & columns) is faster than one (cells) in this
-        case, but the resulting geometries are the same.
+        This method uses GeoPanda's overlay method, but when there are many
+        cell rows in the grid compared to geometries in the GeoDataFrame,
+        rather than overlaying the grid cells onto the GeoDataFrame, it
+        overlays the rows, then the columns. Performing two overlay operations
+        (rows & columns) is faster than one (cells) in this case, but the
+        resulting geometries are the same.
 
         All set-operations except that are supported by GeoPandas.overlay are
         supported by this overlay method, except for 'difference':
@@ -573,6 +572,10 @@ class Grid():
             comprise only polygon geometries.
         how : 'intersection', 'union', 'identity', 'symmetric difference'
             The set-operation to perform. Default is 'intersection'.
+        as_index: boolean
+            If set to True, the row and column grid indices will be set on the
+            resulting GeoDataFrame as a MultiIndex. When False (default), they
+            will be set as columns.
         **kwargs : keyword arguments
             Keyword arguments to pass to the GeoPandas.overlay method.
 
@@ -595,17 +598,12 @@ class Grid():
                 'overlay method. Use the symmetric_difference operation '
                 'instead.')
 
-        supported_methods = [
-            'intersection',
-            'union',
-            'identity',
-            'symmetric_difference']
-        if how not in supported_methods:
+        methods = ['intersection', 'union', 'identity', 'symmetric_difference']
+        if how not in methods:
             raise ValueError(
                 f'The operation "{how}" is not supported by the grid overlay '
-                'method. The supported operations are: {supported_methods}')
+                'method. The supported operations are: {methods}')
 
-        self.__all_geom_type__(gdf_c, 'Polygon', True)
         gdf_c = self.__check_crs_match__(gdf_c)
 
         # Perform the overlay operation. Overlay rows, then columns, when there
@@ -613,24 +611,23 @@ class Grid():
         # the operation on the cells.
         if how != 'symmetric_difference' and self.ncells > (len(gdf_c) / 2):
             gdf_c_cols = gdf_c \
-                .overlay(self.gdf_cols, how, keep_geom_type=False, **kwargs) \
-                .explode(index_parts=False)
+                .overlay(self.gdf_cols, how, keep_geom_type=False, **kwargs)
             gdf_c_rows_col = gdf_c_cols \
-                .overlay(self.gdf_rows, how, keep_geom_type=False, **kwargs) \
-                .explode(index_parts=False)
+                .overlay(self.gdf_rows, how, keep_geom_type=False, **kwargs)
         else:
             gdf_c_rows_col = gdf_c \
                 .overlay(
-                    self.gdf_cells, how=how, keep_geom_type=False, **kwargs) \
-                .explode(index_parts=False)
+                    self.gdf_cells, how=how, keep_geom_type=False, **kwargs)
 
-        # Set the new MultiIndex.
-        gdf_c_rows_col.set_index(
-            [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
+        gdf_c_rows_col = gdf_c_rows_col.explode(index_parts=False)
+
+        if as_index:
+            gdf_c_rows_col.set_index(
+                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
 
         return gdf_c_rows_col
 
-    def sjoin(self, gdf, how='left', predicate='intersects'):
+    def sjoin(self, gdf, how='left', predicate='intersects', as_index=False):
         """
         Spatially join the grid and a GeoDataFrame. Return either the
         GeoDataFrame with the associated row & column indices for each
@@ -670,6 +667,10 @@ class Grid():
         predicate : 'intersects', 'contains', 'within', 'crosses', 'overlaps',
             'touches', 'equals', 'disjoint' The binary predicate to use for the
             sjoin. Default is 'intersects'.
+        as_index: boolean
+            If set to True, the row and column grid indices will be set on the
+            resulting GeoDataFrame as a MultiIndex. When False (default), they
+            will be set as columns.
 
         Returns
         -------
@@ -681,21 +682,25 @@ class Grid():
 
         self.__check_join_type__(how)
         self.__check_predicate__(predicate)
+        self.__check_crs_match__(gdf)
 
         # If the sjoin falls under certain conditions, then use the faster
         # version of sjoin that takes advantage of the grid's uniform
         # structure.
-        if predicate == 'intersects':
-            if self.__all_geom_type__(gdf, 'Point'):
-                return self.__sjoin_points__(gdf, how)
-            if self.__all_geom_type__(gdf, 'Polygon'):
-                return self.__sjoin_polygons__(gdf, how)
+
+        if predicate == 'intersects' and self.__all_geom_type__(gdf, 'Point'):
+            return self.__sjoin_points__(gdf, how, as_index=as_index)
         # Otherwise, use the built-in geopandas sjoin method with the GDF of
         # grid cells (slowest)
         else:
-            return self.__sjoin_cells__(gdf, how, predicate)
+            return self.__sjoin_cells__(gdf, how, predicate, as_index=as_index)
 
-    def __sjoin_cells__(self, gdf, how='left', predicate='intersects'):
+    def __sjoin_cells__(
+            self,
+            gdf,
+            how='left',
+            predicate='intersects',
+            as_index=False):
         """
             Spatially join the grid and a GeoDataFrame. This method is the
             slowest of the sjoin method and is called by the Grid.sjoin method
@@ -705,69 +710,20 @@ class Grid():
 
             See the Grid.sjoin method for more information.
         """
-        self.__check_join_type__(how)
-        # works but is the slowest method.
-        cells = self.gdf_cells
-        lsuffix = self.ID + '_left'
-        rsuffix = self.ID + '_right'
         joined = gdf.sjoin(
-            cells,
+            self.gdf_cells,
             how=how,
             predicate=predicate,
-            lsuffix=lsuffix,
-            rsuffix=rsuffix)
-        # drop all columns starting with the GRID ID
-        joined.drop(columns=joined.filter(regex=self.ID), inplace=True)
+            lsuffix=self.ID + '_left',
+            rsuffix=self.ID + '_right')
+        # drop all columns containing the GRID ID
+        joined = joined.loc[:, ~joined.columns.str.contains(self.ID)]
+        if as_index:
+            joined.set_index(
+                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
         return joined
 
-    def __sjoin_polygons__(self, gdf, how='left'):
-        """
-            Spatially join the grid and a GeoDataFrame. This method is called
-            by the Grid.sjoin method when the input GeoDataFrame contains only
-            Polygon geometries, and the predicate is 'intersects'.
-
-            See the Grid.sjoin method for more information.
-        """
-
-        # TODO: adapt to different predicates (other than intersects)
-
-        self.__check_join_type__(how)
-
-        # works for intersection only so far.
-        gdf_c = gdf.copy()
-        gdf_c = self.__check_crs_match__(gdf_c)
-
-        # Names for the row and column index columns.
-        ri = self.ROW_IND_NAME
-        ci = self.COL_IND_NAME
-        idc = self.ID
-
-        # give a temporary ID to each geometry
-        gdf_c[idc] = range(len(gdf_c))
-
-        # Slice then merge
-        index_id_map = self.overlay(gdf_c, 'intersection') \
-            .groupby([ri, ci, idc], as_index=False) \
-            .size() \
-            .drop(columns='size')
-
-        polygons_with_indices = gdf_c \
-            .merge(index_id_map, on=idc, how='left') \
-            .drop(columns=idc) \
-            .reset_index(drop=True)
-
-        if how == 'left' or how == 'inner':
-            return polygons_with_indices
-
-        # if how is 'right'
-        cells = self.gdf_cells.copy()
-        poly_info = polygons_with_indices.drop(columns='geometry')
-        poly_info = DataFrame(poly_info)
-        cells_with_poly_info = cells \
-            .merge(poly_info, on=[ri, ci], how='left')
-        return cells_with_poly_info
-
-    def __sjoin_points__(self, gdf, how='left'):
+    def __sjoin_points__(self, gdf, how='left', as_index=False):
         """
             Spatially join the grid and a GeoDataFrame. This method is called
             by the Grid.sjoin method when when the input GeoDataFrame contains
@@ -776,56 +732,83 @@ class Grid():
             See the Grid.sjoin method for more information.
         """
 
-        # TODO: adapt to different predicates (other than intersects)
-
-        self.__check_join_type__(how)
-
+        # self.__check_join_type__(how)
         gdf_c = gdf.copy()
 
         # Names for the row and column index columns.
         ri = self.ROW_IND_NAME
         ci = self.COL_IND_NAME
-        idc = self.ID
 
-        # make a temporary ID number gdf_c[idc] = range(len(gdf_c))
-        x = array(gdf_c.geometry.x)
-        y = array(gdf_c.geometry.y)
+        gdf_c[ri], gdf_c[ci] = self.indices_from_xy(
+            gdf_c.geometry.x, gdf_c.geometry.y)
 
-        # Add an ID column to the GeoDataFrame.
-        gdf_c[idc] = ids = array(range(len(gdf_c)))
+        if how == 'left' or how == 'inner':
+            to_return = gdf_c
+
+        else:
+            # if how is 'right'
+            cells = self.gdf_cells.copy()
+            point_info = DataFrame(gdf_c.drop(columns='geometry'))
+            cells_with_point_info = cells \
+                .merge(point_info, on=[ri, ci], how='left')
+            to_return = cells_with_point_info
+
+        if as_index:
+            to_return.set_index(
+                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
+
+        return to_return
+
+    def indices_from_xy(self, x, y):
+        """
+        Identify which cell each coordinate in a list falls within. Given a
+        list of x & y coordinates in the same CRS as the grid, return the
+        corresponding row & column indices where each coordinate is located.
+        When a point is located outside of the grid, the row and column indices
+        for that point will be None
+
+        To instead match a GeoDataFrame of Point geometries to cells, use
+        Grid.sjoin.
+
+        Parameters
+        ----------
+        x : list-like
+            The list of x-coordinates (e.g. [x1, x2, x3]), or a single x
+            coordinate.
+        y : list-like
+            The list of y-coordinates (e.g. [y1, y2, y3]), or a single y
+            coordinate.
+
+        Returns
+        -------
+        tuple of lists
+            The row indices and column indices, respectively, that each of the
+            given point coordinates falls within.
+        """
+
+        x = array(x)
+        y = array(y)
+
+        if len(x) != len(y):
+            raise ValueError('list of x and y coordinates must be the same '
+                             'length.')
 
         row_ind = searchsorted(self.row_fences, y) - 1
         col_ind = searchsorted(self.col_fences, x) - 1
 
         # Don't count points outside the grid.
+        inv = -9999
         inside_rows = ~logical_or(row_ind < 0, row_ind > self.nrows)
         inside_cols = ~logical_or(col_ind < 0, col_ind > self.ncols)
         inside_grid = logical_and(inside_rows, inside_cols)
-        row_ind = row_ind[inside_grid]
-        col_ind = col_ind[inside_grid]
-        ids = ids[inside_grid]
+        row_ind[~inside_grid] = inv
+        col_ind[~inside_grid] = inv
 
         # Convert from 0 to nrows and 0 to ncols to first_row_i to first_row_i
-        # + nrows and first_col_i to first_col_i + ncols
-        col_ind = [self.col_indices[i] for i in col_ind]
-        row_ind = [self.row_indices[i] for i in row_ind]
+        row_ind = [self.row_indices[i] if i != inv else None for i in row_ind]
+        col_ind = [self.col_indices[i] if i != inv else None for i in col_ind]
 
-        index_id_map = DataFrame({ri: row_ind, ci: col_ind, idc: ids})
-
-        points_with_indices = gdf_c \
-            .merge(index_id_map, on=idc, how='left') \
-            .drop(columns=idc)
-
-        if how == 'left' or how == 'inner':
-            return points_with_indices
-
-        # if how is 'right'
-        cells = self.gdf_cells.copy()
-        point_info = points_with_indices.drop(columns='geometry')
-        point_info = DataFrame(point_info)
-        cells_with_point_info = cells \
-            .merge(point_info, on=[ri, ci], how='left')
-        return cells_with_point_info
+        return row_ind, col_ind
 
     def __check_crs_match__(self, gdf):
         """
@@ -842,7 +825,8 @@ class Grid():
             gdf.to_crs(self.crs, inplace=True)
         return gdf
 
-    def __check_join_type__(self, how):
+    @staticmethod
+    def __check_join_type__(how):
         """
             Check if a spatial join type is valid. Raise an error if it is not.
             Used for sjoin.
@@ -853,7 +837,8 @@ class Grid():
                 f'The join type "{how}" is not allowed for a spatial join. '
                 'Allowed join types include: {supported_types}')
 
-    def __check_predicate__(self, predicate):
+    @staticmethod
+    def __check_predicate__(predicate):
         """
             Check if a spatial predicate is valid. Raise an error if it is not.
             Used for sjoin.
@@ -921,6 +906,8 @@ class TMSGrid(Grid):
     morecantile: https://developmentseed.org/morecantile/
     """
 
+    TILE_NAME = 'grid_tile'
+
     def __init__(self, tms_id, z, bounds):
         """
         Initialize a TMSGrid.
@@ -940,7 +927,7 @@ class TMSGrid(Grid):
 
         self.z = z
         self.tms_id = tms_id
-        self.tms = tms = morecantile_tms.get(tms_id)
+        self.tms = tms = morecantile.tms.get(tms_id)
         self.original_bounds = west, south, east, north = bounds
 
         LL_EPSILON = 1e-11
@@ -997,3 +984,142 @@ class TMSGrid(Grid):
             first_col_i=min(x),
             crs=tms.crs
         )
+
+    def sjoin(
+            self,
+            gdf,
+            how='left',
+            predicate='intersects',
+            as_index=False,
+            as_tile=False):
+        """
+            Extends the Grid.sjoin method to add the extra `as_tile` parameter,
+            which returns the Tile object in a column or as the index instead
+            of the row index and column index separately.
+
+        Parameters
+        ----------
+        as_tile : boolean
+            Set to True to set the morecantile Tile object on the GeoDataFrame
+            instead of the two row & column indices. Defaults to False. The
+            Tile can be set as either the GDF index or a column, depending on
+            how as_index is set.
+        """
+        gdf = super().sjoin(gdf, how, predicate, as_index=False)
+        return self.__handle_tile_index__(gdf, as_tile, as_index)
+
+    def overlay(
+            self,
+            gdf,
+            how='intersection',
+            as_index=False,
+            as_tile=False,
+            **kwargs):
+        """
+            Extends the Grid.overlay method to add the extra `as_tile`
+            parameter, which returns the Tile object in a column or as the
+            index instead of the row index and column index separately.
+
+        Parameters
+        ----------
+        as_tile : boolean
+            Set to True to set the morecantile Tile object on the GeoDataFrame
+            instead of the two row & column indices. Defaults to False. The
+            Tile can be set as either the GDF index or a column, depending on
+            how as_index is set.
+        """
+        gdf = super().overlay(gdf, how, as_index=False, **kwargs)
+        return self.__handle_tile_index__(gdf, as_tile, as_index)
+
+    def indices_from_xy(self, x, y, as_tile=False):
+        """
+            Extends the Grid.indices_from_xy method to add the extra `as_tile`
+            parameter. When `as_tile` is set to True, return the
+            morecantile.Tile object instead of the list of row and column
+            indices.
+
+            Parameters
+            ----------
+            as_tile : boolean
+                Set to True to return a list of morecantile Tile objects
+                instead of the two lists of row & column indices.
+        """
+        row_is, col_is = super().indices_from_xy(x, y)
+        if as_tile:
+            return [self.tile_from_rc(r, c) for r, c in zip(row_is, col_is)]
+        else:
+            return row_is, col_is
+
+    def tiles_from_xy(self, x, y):
+        """
+            Identify which tile each coordinate in a list falls within. Given a
+            list of x & y coordinates in the same CRS as the tms grid, return
+            the corresponding morecantile Tile where each coordinate is
+            located. When a point is located outside of the grid, Tile for that
+            point will be None
+
+            To instead match a GeoDataFrame of Point geometries to cells, use
+            Grid.sjoin.
+
+            Parameters
+            ----------
+            x : list-like
+                The list of x-coordinates (e.g. [x1, x2, x3]), or a single x
+                coordinate.
+            y : list-like
+                The list of y-coordinates (e.g. [y1, y2, y3]), or a single y
+                coordinate.
+
+            Returns
+            -------
+            tuple of lists
+                The row indices and column indices, respectively, that each of
+                the given point coordinates falls within.
+        """
+        return self.indices_from_xy(x, y, as_tile=True)
+
+    def tile_from_rc(self, r, c):
+        """
+            Return a morecantile Tile object given a row and column index
+
+            Parameters
+            ----------
+            r : int
+                A row index
+            c : int
+                A column index
+
+            Returns
+            -------
+            morecantile.Tile
+                The Tile object for the row and index, and the z of this grid
+        """
+        if r is not None and c is not None:
+            return morecantile.Tile(r, c, self.z)
+        else:
+            return None
+
+    def __handle_tile_index__(self, gdf, as_tile, as_index):
+        """
+            Take a GDF with row index and column index columns. If as_tile is
+            true, convert those columns into a single tile column that contains
+            the associated morecantile.Tile object. If as_index is true, set
+            the tile column (or ow index and column index columns) as the GDF
+            index. Return the index.
+        """
+        ri = self.ROW_IND_NAME
+        ci = self.COL_IND_NAME
+        tn = self.TILE_NAME
+
+        if as_tile:
+            row_is, col_is = (array(gdf[ri]), array(gdf[ci]))
+            gdf[tn] = [self.tile_from_rc(r, c) for r, c in zip(row_is, col_is)]
+            gdf.drop(columns=[ci, ri], inplace=True)
+            indexable_cols = tn
+        else:
+            indexable_cols = [ri, ci]
+
+        if as_index:
+            gdf.set_index(indexable_cols, inplace=True)
+
+        return gdf
