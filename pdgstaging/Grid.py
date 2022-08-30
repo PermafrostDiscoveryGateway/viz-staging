@@ -1094,8 +1094,11 @@ class TMSGrid(Grid):
             morecantile.Tile
                 The Tile object for the row and index, and the z of this grid
         """
+        # tileCol increases towards the right = x = horizontal index
+        # tileRow increases towards the bottom = y = vertical index
+        # see https://docs.opengeospatial.org/is/17-083r2/17-083r2.html#9
         if r is not None and c is not None:
-            return morecantile.Tile(r, c, self.z)
+            return morecantile.Tile(x=c, y=r, z=self.z)
         else:
             return None
 
