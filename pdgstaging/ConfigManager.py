@@ -844,7 +844,7 @@ class ConfigManager():
             },
             'colorPalette': {
                 'paletteType': 'categorical',
-                'colorPalette': {'colors': [{'color': color}]}
+                'colors': [{'color': color}]
             }
         }
 
