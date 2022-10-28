@@ -287,6 +287,13 @@ class TileStager():
         centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
         gdf[props['centroid_within_tile']] = centroid_only
 
+        # Add the column to flag duplicate polygons. This will be set to True
+        # later if duplicates are found.
+        dedup_method = self.config.get_deduplication_method()
+        if dedup_method is not None:
+            # Mark all the polygons as not duplicated
+            gdf[self.config.polygon_prop('duplicated')] = False
+
         logger.info(
             f'Added properties for {num_polygons} vectors in '
             f'{datetime.now() - start_time} from file {path}'
@@ -396,16 +403,15 @@ class TileStager():
             mode = 'w'
 
             if os.path.isfile(tile_path):
-                # If the file exists and config is set to deduplicate during
-                # staging, then open the file, append the new data, and
-                # deduplicate. Overwrite existing file.
-                dedup_at_staging = self.config.deduplicate_at('staging')
+                # If the file exists and config is set to deduplicate, then
+                # open the file, append the new data, and identify duplicates.
+                # Remove the data if the config is set to remove duplicates
+                # during staging. Overwrite existing file.
                 dedup_method = self.config.get_deduplication_method()
-                if dedup_at_staging and (dedup_method is not None):
+                if dedup_method is not None:
                     data = self.combine_and_deduplicate(data, tile_path)
-                # If the file exists and config is not set to deduplicate
-                # during staging, then just append the new data to the existing
-                # file.
+                # If the file exists and config is not set to deduplicate, then
+                # just append the new data to the existing file.
                 else:
                     mode = 'a'
 
@@ -456,8 +462,13 @@ class TileStager():
             f'Starting deduplication in tile {tile_path} with {len(gdf)} '
             'polygons.'
         )
-        dedup = dedup_method(gdf, **dedup_config)
-        gdf = dedup['keep']
+        gdf = dedup_method(gdf, **dedup_config)
+
+        # drop duplicated polygons, if config is set to deduplicate here
+        if self.config.deduplicate_at('staging'):
+            prop_duplicated = self.config.polygon_prop('duplicated')
+            if prop_duplicated in gdf.columns:
+                gdf.drop(gdf[gdf['prop_duplicated'] is True], inplace=True)
 
         logger.info(
             f'Finished deduplication in {datetime.now() - dedup_start_time}'

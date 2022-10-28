@@ -108,6 +108,9 @@ class ConfigManager():
                 The name of the boolean property that indicates if a polygon's
                 tile property matches it's centroid property. Defaults to
                 'staging_centroid_within_tile'
+            - prop_duplicated : str
+                The name of the boolean property that indicates if a polygon
+                was identified as a duplicate or not
 
         - Staging options.
             - input_crs : str
@@ -226,8 +229,10 @@ class ConfigManager():
             - Deduplication options. Deduplicate input that comes from multiple
               source files.
                 - deduplicate_at : list of str or None
-                    When to deduplicate the input data. Options are 'staging',
-                    'raster', '3dtiles', or None to skip deduplication.
+                    When to remove the polygons identified as duplicates.
+                    Options are 'staging', 'raster', '3dtiles', or None to skip
+                    deduplication. If set to 'staging', then duplicates will
+                    also be removed in raster and 3dtiles.
                 - deduplicate_method : 'neighbor', 'footprints', or None
                     The method to use for deduplication. Options are
                     'neighbor', 'footprints', or None. If None, then no
@@ -370,6 +375,7 @@ class ConfigManager():
         'prop_filename': 'staging_filename',
         'prop_identifier': 'staging_identifier',
         'prop_centroid_within_tile': 'staging_centroid_within_tile',
+        'prop_duplicated': 'staging_duplicated',
         # original CRS if not set in input
         'input_crs': None,
         # Staging options
@@ -1249,7 +1255,9 @@ class ConfigManager():
                 'centroid_tolerance': self.get(
                     'deduplicate_centroid_tolerance'),
                 'distance_crs': self.get('deduplicate_distance_crs'),
-                'return_intersections': False
+                'return_intersections': False,
+                'label': True,
+                'prop_duplicated': self.polygon_prop('duplicated')
             }
         if(method == 'footprints'):
             files = gdf[file_prop].unique().tolist()
@@ -1269,7 +1277,9 @@ class ConfigManager():
                 'clip_to_footprint': self.get(
                     'deduplicate_clip_to_footprint'),
                 'clip_method': self.get(
-                    'deduplicate_clip_method')
+                    'deduplicate_clip_method'),
+                'label': True,
+                'prop_duplicated': self.polygon_prop('duplicated')
             }
 
         return None

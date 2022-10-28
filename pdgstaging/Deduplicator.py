@@ -90,7 +90,9 @@ def deduplicate_neighbors(
     overlap_both=True,
     centroid_tolerance=None,
     distance_crs='EPSG:3857',
-    return_intersections=False
+    return_intersections=False,
+    label=True,
+    prop_duplicated='duplicated'
 ):
     """
 
@@ -182,11 +184,19 @@ def deduplicate_neighbors(
         If True, the GeoDataFrame with the intersection geometries is returned
         in addition to the GeoDataFrames with the deduplicated and removed
         geometries. Default is False.
+    label : bool, optional
+        Set to True (default) to return the input GDF with the polygons
+        identified as duplicates labeled as such. The column name that will be
+        used to flag duplicates is set with the prop_duplicated option.
+    prop_duplicated : str, optional
+        Defaults to "duplicated". The column name / property to use to flag
+        duplicates when label is True.
 
     Returns
     -------
-    dict
-        A dictionary with the following keys:
+    dict or GeoDataFrame
+        When the label option is False, then a dictionary with the following
+        keys:
 
         - 'keep' : GeoDataFrame
             The deduplicated GeoDataFrame.
@@ -194,6 +204,10 @@ def deduplicate_neighbors(
             The GeoDataFrame with the removed features.
         - 'intersections' : GeoDataFrame
             The GeoDataFrame with the intersections.
+
+        When the label option is True, then returns the input GDF with the
+        polygons flagged as duplicates. Duplicates are marked as True in the
+        prop_duplicated column.
     """
 
     if split_by is None:
@@ -264,8 +278,11 @@ def deduplicate_neighbors(
         'removed': None
     }
 
+    # If there is only one group, then there is nothing to deduplicate
     if len(gdfs) < 2:
         to_return['keep'] = gdf_original.drop(columns=[prop_id])
+        if label:
+            to_return = label_duplicates(to_return, prop_duplicated)
         return to_return
 
     # Set will hold all of the polygons IDs that we will remove
@@ -383,6 +400,9 @@ def deduplicate_neighbors(
     to_return['removed'] = gdf_original[remove]
     to_return['keep'] = gdf_original[~remove]
 
+    if label:
+        to_return = label_duplicates(to_return, prop_duplicated)
+
     return to_return
 
 
@@ -393,7 +413,9 @@ def deduplicate_by_footprint(
     keep_rules=[],
     return_intersections=False,
     clip_to_footprint=False,
-    clip_method='within'
+    clip_method='within',
+    label=True,
+    prop_duplicated='duplicated'
 ):
     """
 
@@ -441,18 +463,30 @@ def deduplicate_by_footprint(
         'contains_properly', 'covers', 'crosses', 'intersects', 'overlaps',
         'touches', 'within' (any option listed by
         geopandas.GeoDataFrame.sindex.valid_query_predicates)
+    label : bool, optional
+        Set to True (default) to return the input GDF with the polygons
+        identified as duplicates labeled as such. The column name that will be
+        used to flag duplicates is set with the prop_duplicated option.
+    prop_duplicated : str, optional
+        Defaults to "duplicated". The column name / property to use to flag
+        duplicates when label is True.
 
     Returns
     -------
-    dict
-        A dictionary with the following keys:
+    dict or GeoDataFrame
+        When the label option is False, then a dictionary with the following
+        keys:
 
         - 'keep' : GeoDataFrame
             The deduplicated GeoDataFrame.
         - 'removed' : GeoDataFrame
             The GeoDataFrame with the removed features.
         - 'intersections' : GeoDataFrame
-            The GeoDataFrame with the footprint intersections.
+            The GeoDataFrame with the intersections.
+
+        When the label option is True, then returns the input GDF with the
+        polygons flagged as duplicates. Duplicates are marked as True in the
+        prop_duplicated column.
     """
 
     gdf = gdf.copy()
@@ -474,11 +508,14 @@ def deduplicate_by_footprint(
 
     if(len(names) == 1):
         # If there is only one group, then there is nothing to deduplicate
-        return {
+        to_return = {
             'keep': gdf,
             'removed': None,
             'intersections': None
         }
+        if label:
+            to_return = label_duplicates(to_return, prop_duplicated)
+        return to_return
 
     # If the values of footprints dict are strings, then assume the strings are
     # paths and load the footprints
@@ -561,7 +598,46 @@ def deduplicate_by_footprint(
     if return_intersections:
         to_return['intersections'] = pd.concat(intersections)
 
+    if label:
+        to_return = label_duplicates(to_return, prop_duplicated)
+
     return to_return
+
+
+def label_duplicates(deduplicate_output, prop_duplicated):
+    """Recombine the keep & removed GDFs and mark the removed as duplicates
+
+    Parameters
+    ----------
+    deduplicate_output : dict
+        The output of one of the deduplication methods
+
+    prop_duplicated : str
+        The column name to use to flag duplicate polygons
+
+    Returns
+    -------
+
+    GeoDataFrame
+    The combined GDF with duplicated polygons flagged.
+
+    """
+
+    not_duplicates = deduplicate_output['keep']
+    duplicates = deduplicate_output['removed']
+
+    if duplicates is not None:
+        duplicates[prop_duplicated] = True
+
+    if not_duplicates is not None:
+        if prop_duplicated in not_duplicates.columns:
+            not_duplicates[prop_duplicated] = \
+                not_duplicates[prop_duplicated].apply(
+                    lambda x: True if x is True else False)
+        else:
+            not_duplicates[prop_duplicated] = False
+
+    return pd.concat([not_duplicates, duplicates])
 
 
 def plot_duplicates(deduplicate_output, split_by):
