@@ -455,7 +455,7 @@ class TileStager():
         existing_gdf = gpd.read_file(tile_path)
         gdf = pd.concat([gdf, existing_gdf])
         dedup_config = self.config.get_deduplication_config(gdf)
-        if(dedup_method is None):
+        if dedup_method is None:
             return gdf
 
         logger.info(
@@ -468,7 +468,7 @@ class TileStager():
         if self.config.deduplicate_at('staging'):
             prop_duplicated = self.config.polygon_prop('duplicated')
             if prop_duplicated in gdf.columns:
-                gdf.drop(gdf[gdf['prop_duplicated'] is True], inplace=True)
+                gdf = gdf[~gdf[prop_duplicated]]
 
         logger.info(
             f'Finished deduplication in {datetime.now() - dedup_start_time}'
