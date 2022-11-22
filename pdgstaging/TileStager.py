@@ -453,7 +453,16 @@ class TileStager():
 
         dedup_method = self.config.get_deduplication_method()
         existing_gdf = gpd.read_file(tile_path)
-        gdf = pd.concat([gdf, existing_gdf])
+
+        # Projection info can be lost during saving & reopening geopackage
+        # files for the CRS used for some TMSs, see details:
+        # https://github.com/PermafrostDiscoveryGateway/viz-staging/issues/11
+        to_concat = [gdf, existing_gdf]
+        num_unique_crs = len({g.crs for g in to_concat})
+        if num_unique_crs != 1:
+            existing_gdf.to_crs(gdf.crs, inplace=True)
+
+        gdf = pd.concat(to_concat)
         dedup_config = self.config.get_deduplication_config(gdf)
         if dedup_method is None:
             return gdf
