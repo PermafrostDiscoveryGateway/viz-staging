@@ -16,9 +16,8 @@ setup(
     install_requires=[
         'numpy >= 1.2, < 2.0',
         'pandas >= 1.4, < 2.0',
-        'Shapely >= 1.8.5, < 2',
-        'pygeos >= 0.13, < 1',
-        'geopandas >= 0.10, < 1.0',
+        'shapely >= 2.0b2',
+        'geopandas >= 0.12, < 1.0',
         'morecantile >= 3.1, < 4.0',
         'Rtree >= 0.9, < 1.0',
         'filelock >= 3.6, < 4.0',
