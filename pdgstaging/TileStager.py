@@ -391,9 +391,6 @@ class TileStager():
                 f'Saving {len(data.index)} vectors to tile {tile_path}'
             )
 
-            # Save a copy of the tile column for the summary
-            tiles = data[self.props['tile']].copy()
-
             # Tile must be a string for saving as attribute
             data[self.props['tile']] = data[self.props['tile']].astype('str')
             tile_strings = data[self.props['tile']].astype('str')
@@ -421,8 +418,18 @@ class TileStager():
                     warnings.simplefilter('ignore', FutureWarning)
                     data.to_file(tile_path, mode=mode)
 
+                # convert each tile from string format to morecantile format 
+                # so it can be added to summary
+                # first create series of tiles in str format
+                tiles_str = data[self.props['tile']].copy()
+
+                tiles_morecantile = []
+                for tile in tiles_str:
+                    tile_morecantile = self.tiles.tile_from_str(tile)
+                    tiles_morecantile.append(tile_morecantile)                
+
                 # Record what was saved
-                data[self.props['tile']] = tiles
+                data[self.props['tile']] = tiles_morecantile
                 self.summarize(data)
             finally:
                 # Track the end time, the total time, and the number of vectors
