@@ -396,7 +396,7 @@ class TileStager():
 
             # Tile must be a string for saving as attribute
             data[self.props['tile']] = data[self.props['tile']].astype('str')
-            tile_strings = data[self.props['tile']].astype('str')
+            tile_strings = data[self.props['centroid_tile']].astype('str')
             data[self.props['centroid_tile']] = tile_strings
 
             # Open the file in write mode by default
