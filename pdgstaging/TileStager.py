@@ -423,10 +423,7 @@ class TileStager():
                 # first create series of tiles in str format
                 tiles_str = data[self.props['tile']].copy()
 
-                tiles_morecantile = []
-                for tile in tiles_str:
-                    tile_morecantile = self.tiles.tile_from_str(tile)
-                    tiles_morecantile.append(tile_morecantile)                
+                tiles_morecantile = [self.tiles.tile_from_str(tile) for tile in tiles_str]
 
                 # Record what was saved
                 data[self.props['tile']] = tiles_morecantile
