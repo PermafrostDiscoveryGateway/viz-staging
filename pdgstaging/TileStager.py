@@ -466,7 +466,7 @@ class TileStager():
         if num_unique_crs != 1:
             existing_gdf.to_crs(gdf.crs, inplace=True)
 
-        gdf = pd.concat(to_concat)
+        gdf = pd.concat(to_concat, ignore_index=True)
         dedup_config = self.config.get_deduplication_config(gdf)
         if dedup_method is None:
             return gdf
