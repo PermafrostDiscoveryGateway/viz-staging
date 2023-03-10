@@ -5,6 +5,15 @@ import uuid
 import itertools
 import warnings
 
+import os
+from datetime import datetime
+import numpy as np
+from filelock import FileLock
+import logging
+from . import ConfigManager, TilePathManager
+logger = logging.getLogger(__name__)
+
+logging.info("Deduplicator.py has been run.")
 
 def keep_rules_to_sort_order(keep_rules):
     """
@@ -58,6 +67,9 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
             'keep' key), and the GeoDataFrame of polygons that were removed
             (the value of the 'removed' key).
     """
+
+    logging.info("Clipping to footprint is being executed.")
+
     # Temporary property to use during the sjoin
     prop_in_fp_temp = 'WITHIN_BOUNDARY_' + uuid.uuid4().hex
 
@@ -72,6 +84,9 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
 
     outside = gdf[~gdf[prop_in_fp_temp].notnull()]
     outside = outside.drop([prop_in_fp_temp], axis=1)
+
+    logging.info(f"outside is: {outside}")
+    logging.info(f"within is: {within}")
 
     return {
         'keep': within,
@@ -412,7 +427,7 @@ def deduplicate_by_footprint(
     footprints,
     keep_rules=[],
     return_intersections=False,
-    clip_to_footprint=False,
+    clip_to_footprint=True,
     clip_method='within',
     label=True,
     prop_duplicated='duplicated'
@@ -546,7 +561,12 @@ def deduplicate_by_footprint(
                 boundary=fp.copy(),
                 method=clip_method)
             gdf_dict[name] = clip_results['keep']
+
+            logging.info(f"clip_results['keep'] = {gdf_dict[name]}")
+            
             removed.append(clip_results['removed'])
+
+    logger.info(f"clip_results['removed] = {removed}. This is all appended removed polys.")
 
     # Rank the footprints according to the keep_rules
     footprints_concat = gpd.GeoDataFrame(pd.concat(

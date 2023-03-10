@@ -55,7 +55,7 @@ class TileStager():
 
         if(check_footprints and
            self.config.get('deduplicate_method') == 'footprints'):
-            logger.info('Checking for footprint files...')
+            logging.info('Checking for footprint files...')
             missing = self.check_footprints()
             num_missing = len(missing)
             if 0 < num_missing < 20:
@@ -122,8 +122,10 @@ class TileStager():
                 The path to the vector file to process and create tiles for.
         """
         gdf = self.get_data(path)
+        logging.info(f"Staging file {path}")
         # Remove any geometries that are not polygons
         gdf = gdf[gdf.geometry.type == 'Polygon']
+        logging.info(f"Length of gdf (input file with geometry type filtered for polygons) is {len(gdf)}")
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
             gdf = self.set_crs(gdf)
