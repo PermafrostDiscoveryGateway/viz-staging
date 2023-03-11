@@ -1,0 +1,29 @@
+{
+    "version": 1,
+    "disable_existing_loggers": true,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        }
+    },
+    "handlers": {
+        "default": {
+            "level": "INFO",
+            "formatter": "standard",
+            "class": "logging.StreamHandler"
+        },
+        "file_handler": {
+            "level": "INFO",
+            "filename": "/home/jcohen/viz-staging/log.log",
+            "class": "logging.FileHandler",
+            "formatter": "standard"
+        }
+    },
+    "loggers": {
+        "": {
+            "handlers": ["file_handler"],
+            "level": "INFO",
+            "propagate": true
+        }
+    }
+  }
