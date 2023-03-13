@@ -14,7 +14,7 @@
         },
         "file_handler": {
             "level": "INFO",
-            "filename": "/home/jcohen/iwp_workflow_testing/log.log",
+            "filename": "/home/jcohen/viz-staging/log.log",
             "class": "logging.FileHandler",
             "formatter": "standard"
         }

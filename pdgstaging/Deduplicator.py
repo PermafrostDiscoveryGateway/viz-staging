@@ -10,7 +10,7 @@ from datetime import datetime
 import numpy as np
 from filelock import FileLock
 import logging
-from . import ConfigManager, TilePathManager
+from . import ConfigManager, TilePathManager, Grid
 logger = logging.getLogger(__name__)
 
 logging.info("Deduplicator.py has been run.")
