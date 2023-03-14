@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from filelock import FileLock
 
-from . import ConfigManager, TilePathManager, TMSGrid, Deduplicator
+from . import ConfigManager, TilePathManager, TMSGrid
 
 logger = logging.getLogger(__name__)
 

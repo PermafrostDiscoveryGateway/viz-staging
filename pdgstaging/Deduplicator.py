@@ -10,7 +10,9 @@ from datetime import datetime
 import numpy as np
 from filelock import FileLock
 import logging
-from . import ConfigManager, TilePathManager, Grid
+# NOTE: DO NOT IMPORT ConfigManager, TilePathManager, Grid 
+# BECAUSE IT CAUSES CONFIG IMPORT DURING RASTERIZATION
+
 logger = logging.getLogger(__name__)
 
 def keep_rules_to_sort_order(keep_rules):
