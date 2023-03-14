@@ -1,10 +1,9 @@
-IWP_CONFIG = {
-  "deduplicate_clip_to_footprint": True,
-  "dir_output": "/home/jcohen/viz-workflow/", 
-  "dir_input": "/home/jcohen/iwp_workflow_testing/input/russia_subset/", 
+iwp_config = {
+  "deduplicate_clip_to_footprint": True, 
+  "dir_input": "/home/jcohen/iwp_russia_subset_clipToFP_PR/iwp/", 
   "ext_input": ".shp",
   "ext_footprints": ".shp",
-  "dir_footprints": "/home/jcohen/iwp_workflow_testing/footprints/russia_subset/", 
+  "dir_footprints": "/home/jcohen/iwp_russia_subset_clipToFP_PR/footprints/", 
   "dir_staged": "staged/",
   "dir_geotiff": "geotiff/", 
   "dir_web_tiles": "web_tiles/", 
@@ -40,7 +39,7 @@ IWP_CONFIG = {
     },
   ],
   "deduplicate_at": [
-    "staging"
+    "raster"
   ],
   "deduplicate_keep_rules": [
     [

@@ -13,8 +13,6 @@ import logging
 from . import ConfigManager, TilePathManager, Grid
 logger = logging.getLogger(__name__)
 
-logging.info("Deduplicator.py has been run.")
-
 def keep_rules_to_sort_order(keep_rules):
     """
     Convert a list of keep rules to the format required for the pandas
@@ -552,6 +550,9 @@ def deduplicate_by_footprint(
 
     # Clip to gdf to the extent of the footprints
     if clip_to_footprint:
+
+        logger.info("Clipping to footprint has initiated.")
+
         for name, gdf_grp in gdf_dict.items():
             fp = footprints.get(name)
             if fp is None:
@@ -562,11 +563,9 @@ def deduplicate_by_footprint(
                 method=clip_method)
             gdf_dict[name] = clip_results['keep']
 
-            logging.info(f"clip_results['keep'] = {gdf_dict[name]}")
+            logging.info(f"Length of clip_results['keep'] = {len(clip_results['keep'])}\nLength of clip_results['removed'] = {len(clip_results['removed'])}")
             
             removed.append(clip_results['removed'])
-
-    logger.info(f"clip_results['removed] = {removed}. This is all appended removed polys.")
 
     # Rank the footprints according to the keep_rules
     footprints_concat = gpd.GeoDataFrame(pd.concat(

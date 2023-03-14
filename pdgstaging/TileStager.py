@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from filelock import FileLock
 
-from . import ConfigManager, TilePathManager, TMSGrid
+from . import ConfigManager, TilePathManager, TMSGrid, Deduplicator
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +125,26 @@ class TileStager():
         logging.info(f"Staging file {path}")
         # Remove any geometries that are not polygons
         gdf = gdf[gdf.geometry.type == 'Polygon']
+
         logging.info(f"Length of gdf (input file with geometry type filtered for polygons) is {len(gdf)}")
+
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
             gdf = self.set_crs(gdf)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
+            # clip the file by its footprint 
+            # after the file has been flagged for duplicates 
+            # and after it's been deduplicated if set to do so at staging
+            # dedup_method = self.config.get_deduplication_method()
+            # dedup_clipToFP = self.config.get_clip_to_footprint()
+            # "deduplicate_clip_to_footprint": True
+            # if dedup_method == "footprints" and clip_to:
+
+            # if dedup_method is not None:
+            #     # Mark all the polygons as not duplicated
+            #     gdf[self.config.polygon_prop('duplicated')] = False
+            #     #  = clip_gdf()
             self.save_tiles(gdf)
         else:
             logger.warning(f'No features in {path}')

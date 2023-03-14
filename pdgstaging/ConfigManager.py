@@ -1320,6 +1320,22 @@ class ConfigManager():
         if(method == 'footprints'):
             return deduplicate_by_footprint
         return None
+    
+    # def get_clipToFP_choice(self):
+    #     """
+    #         Return the clip to footprint True/False choice
+
+    #         Returns
+    #         -------
+    #         str
+    #             The clip to footprint True/False choice
+    #     """
+    #     choice = self.get('deduplicate_clip_to_footprint')
+    #     if(choice == True):
+    #         return 'True'
+    #     if(choice == False):
+    #         return 'False'
+
 
     def footprint_path_from_input(self, path, check_exists=False):
         """
