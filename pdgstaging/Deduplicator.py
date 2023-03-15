@@ -521,7 +521,11 @@ def deduplicate_by_footprint(
     # paths and load the footprints
     if all([isinstance(v, str) for v in footprints.values()]):
         for name, path in footprints.items():
-            footprints[name] = gpd.read_file(path)
+            try:
+                footprints[name] = gpd.read_file(path)
+            except Exception:
+                footprints[name] = None
+                warnings.warn(f'Footprint missing for {name}')
 
     # Add a column to the GeoDataFrame that contains the filename
     prop_filename_temp = 'filename_' + uuid.uuid4().hex
@@ -534,9 +538,12 @@ def deduplicate_by_footprint(
     # Clip to gdf to the extent of the footprints
     if clip_to_footprint:
         for name, gdf_grp in gdf_dict.items():
+            fp = footprints.get(name)
+            if fp is None:
+                continue
             clip_results = clip_gdf(
                 gdf=gdf_grp.copy(),
-                boundary=footprints[name].copy(),
+                boundary=fp.copy(),
                 method=clip_method)
             gdf_dict[name] = clip_results['keep']
             removed.append(clip_results['removed'])
@@ -557,8 +564,10 @@ def deduplicate_by_footprint(
     for pair in itertools.combinations(names, 2):
         name1 = pair[0]
         name2 = pair[1]
-        footprint1 = footprints[name1]
-        footprint2 = footprints[name2]
+        footprint1 = footprints.get(name1)
+        footprint2 = footprints.get(name2)
+        if(footprint1 is None or footprint2 is None):
+            continue
 
         # Get overlap between two footprints
         overlap = gpd.GeoDataFrame(
@@ -587,7 +596,7 @@ def deduplicate_by_footprint(
         removed.append(to_reduce[overlap_boolean])
 
     # Recombine the GDFs from the dictionary
-    keep = pd.concat(gdf_dict.values())
+    keep = pd.concat(gdf_dict.values(), ignore_index=True)
     removed = pd.concat(removed)
 
     to_return = {
@@ -596,7 +605,7 @@ def deduplicate_by_footprint(
     }
 
     if return_intersections:
-        to_return['intersections'] = pd.concat(intersections)
+        to_return['intersections'] = pd.concat(intersections, ignore_index=True)
 
     if label:
         to_return = label_duplicates(to_return, prop_duplicated)

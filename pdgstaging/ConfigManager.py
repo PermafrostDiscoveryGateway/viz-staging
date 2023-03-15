@@ -1265,7 +1265,7 @@ class ConfigManager():
 
             for f in files:
                 try:
-                    footprints[f] = self.footprint_path_from_input(f)
+                    footprints[f] = self.footprint_path_from_input(f, check_exists=True)
                 except FileNotFoundError:
                     logger.warning(
                         f'No footprint files found for file {f}. '
@@ -1349,10 +1349,10 @@ class ConfigManager():
         path = os.path.join(dir_footprints, path + ext_footprints)
         if check_exists:
             if os.path.exists(path):
-                logger.info('Successfully found footprint file: {}'.format(path))
+                logger.info(f'Successfully found footprint file: {path}')
                 return path
             else:
-                logger.info('Failed to find footprint file: {}'.format(path))
+                logger.info(f'Failed to find footprint file: {path}')
                 raise FileNotFoundError(path)
         else:
             return path
