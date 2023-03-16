@@ -11,7 +11,7 @@ import numpy as np
 from filelock import FileLock
 import logging
 # NOTE: DO NOT IMPORT ConfigManager, TilePathManager, Grid 
-# BECAUSE IT CAUSES CONFIG IMPORT DURING RASTERIZATION
+# BECAUSE IT CAUSES CONFIG IMPORT ERROR DURING RASTERIZATION
 
 logger = logging.getLogger(__name__)
 
