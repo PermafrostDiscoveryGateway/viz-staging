@@ -10,6 +10,7 @@ import pandas as pd
 from filelock import FileLock
 
 from . import ConfigManager, TilePathManager, TMSGrid
+from .Deduplicator import clip_gdf, label_duplicates
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ class TileStager():
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
             gdf = self.set_crs(gdf)
+            gdf = self.clip_to_footprint(gdf, path)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
             # clip the file by its footprint 
@@ -148,7 +150,80 @@ class TileStager():
             self.save_tiles(gdf)
         else:
             logger.warning(f'No features in {path}')
+    
+    def clip_to_footprint(self, gdf, path):
+        """
+            If the config is set to clip to footprint,
+            find the footprint file associated with the gdf, 
+            clip the gdf to its footprint.
 
+            If the config is set to deduplicate,
+            label duplicates in the gdf,
+
+            Returns
+            -------
+            The GeodataFrame with polygons that fall outside
+            the footprint removed if the config is set to do so, 
+            and the duplicates flagged if the cofig
+            is set to do so.
+
+            Parameters
+            ----------
+            gdf : GeoDataFrame undergoing staging.
+
+        """
+        # Will hold the polygons that were removed
+        removed = []
+        # Will hold the polygons that are to keep
+        #gdf_dict = {}
+
+        # check if the config is set to clip to footprint
+        clip_to_footprint = self.get('deduplicate_clip_to_footprint')
+        # if the config is set to do so, clip to footprint
+        if (clip_to_footprint == True):
+            logger.info(f'Clipping to footprint for file {path}.')
+            # pull in footprint as a gdf called fp
+            fp_path = self.footprint_path_from_input(path, check_exists=True)
+            fp = self.get_data(fp_path)
+
+            # Clip the gdf to the extent of the footprints
+            clip_results = clip_gdf(
+                gdf = gdf.copy(), # the gdf to clip
+                boundary = fp.copy() # the footprint
+            ) # default method is applied
+
+            #gdf_dict['keep'] = clip_results['keep']
+            #removed.append(clip_results['removed'])
+
+            # define the dictionary to pass onto clip_gdf
+            # Get the unique values of the split_by property. Divide the GeoDataFrame.
+            #split_by = self.polygon_prop('filename') # group by input file, there is only 1! 
+            #gdf_grouped = gdf.groupby(split_by)
+            #gdf_dict = {}
+            #for g in gdf_grouped.groups:
+            #    gdf_dict[g] = gdf_grouped.get_group(g)
+
+            # Clip the gdf to the extent of the footprints
+            #for name, gdf_grp in gdf_dict.items():
+            # clip_results = clip_gdf(
+            #     gdf = 
+            # )
+
+        # Next, check if the config is set to deduplicate at any step
+        dedup = self.get('deduplicate_method')
+        # if the config is set to do so, deduplicate
+        if dedup is not None:
+            logger.info(f'Labeling duplicates for file {path}.')
+            label_duplicates(
+                deduplicate_output = clip_results,
+                prop_duplicated = 'duplicated')
+        else:
+            # if the config is not set to label,
+            # just convert the dictionary output by clip_gdf
+            # into the clipped gdf and move forward without the labels
+            gdf = clip_results['keep']
+            removed.append(clip_results['removed'])
+    
     def get_data(self, input_path=None):
         """
             Read a vector file as a GeoDataFrame
