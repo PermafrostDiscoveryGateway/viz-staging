@@ -178,19 +178,21 @@ class TileStager():
         #gdf_dict = {}
 
         # check if the config is set to clip to footprint
-        clip_to_footprint = self.get('deduplicate_clip_to_footprint')
+        clip_to_footprint = self.config.get('deduplicate_clip_to_footprint')
         # if the config is set to do so, clip to footprint
         if (clip_to_footprint == True):
-            logger.info(f'Clipping to footprint for file {path}.')
+            logger.info(f'Starting clipping to footprint for file {path}.\nLooking for footprint.')
             # pull in footprint as a gdf called fp
-            fp_path = self.footprint_path_from_input(path, check_exists=True)
+            fp_path = self.config.footprint_path_from_input(path, check_exists=True)
             fp = self.get_data(fp_path)
-
+            logger.info('Footprint found. Clipping...')
             # Clip the gdf to the extent of the footprints
             clip_results = clip_gdf(
                 gdf = gdf.copy(), # the gdf to clip
                 boundary = fp.copy() # the footprint
             ) # default method is applied
+
+            
 
             #gdf_dict['keep'] = clip_results['keep']
             #removed.append(clip_results['removed'])
@@ -210,7 +212,7 @@ class TileStager():
             # )
 
         # Next, check if the config is set to deduplicate at any step
-        dedup = self.get('deduplicate_method')
+        dedup = self.config.get('deduplicate_method')
         # if the config is set to do so, deduplicate
         if dedup is not None:
             logger.info(f'Labeling duplicates for file {path}.')
