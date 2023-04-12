@@ -71,22 +71,43 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
     logging.info("Clipping to footprint is being executed.")
 
     # Temporary property to use during the sjoin
+    # assigns an identifier to 
     prop_in_fp_temp = 'WITHIN_BOUNDARY_' + uuid.uuid4().hex
 
+    logging.info(f"prop_in_fp_temp is: {prop_in_fp_temp}")
+
+    # define the boundary as the footprint gdf's geometry column
     boundary = boundary.copy().filter(['geometry'])
+
+    # set the only row in the column to True
+    # there is only 1 row cause the boundary is only 1 geometry
+    # did Robyn mean to assign tru to only this one row??
+    # cause later on, seems like there are NaN values for every row
+    # in this col when we sjoin?
     boundary[prop_in_fp_temp] = True
 
+    # use sjoin to determine if the polygons are within the footprint
+    # then drop the column called `index_right`
     gdf = gdf.sjoin(boundary, how='left', predicate=method) \
              .drop(['index_right'], axis=1)
+    
+    logging.info(f"Length of gdf after sjoin is {len(gdf)}")
+    
+    logging.info(f"gdf temp col head(10) after sjoin is: {gdf[prop_in_fp_temp].head(10)}")
 
+    # create an object that is only the values that are not NaN (are within the FP)
     within = gdf[gdf[prop_in_fp_temp].notnull()]
+    logging.info(f"within before dropping temp col is: {within}")
+
+    # drop the column from `within` that's used 
+    # to identify polys that fall outside the footprint
     within = within.drop([prop_in_fp_temp], axis=1)
-
+    logging.info(f"within after dropping temp col is: {within}")
     outside = gdf[~gdf[prop_in_fp_temp].notnull()]
-    outside = outside.drop([prop_in_fp_temp], axis=1)
 
-    logging.info(f"outside is: {outside}")
-    logging.info(f"within is: {within}")
+    logging.info(f"outside before dropping temp col is: {outside}")
+    outside = outside.drop([prop_in_fp_temp], axis=1)
+    logging.info(f"outside after dropping temp col is: {outside}")
 
     return {
         'keep': within,
