@@ -62,10 +62,13 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
 
         Returns
         -------
-        dict
+        clipped_dict
             A dictionary containing the clipped GeoDataFrame (the value of the
             'keep' key), and the GeoDataFrame of polygons that were removed
             (the value of the 'removed' key).
+
+        gdf
+            GeoDataFrame that has been clipped to the extent of the footprints.
     """
 
     logging.info("Clipping to footprint is being executed.")
@@ -74,45 +77,45 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
     # assigns an identifier to 
     prop_in_fp_temp = 'WITHIN_BOUNDARY_' + uuid.uuid4().hex
 
-    logging.info(f"prop_in_fp_temp is: {prop_in_fp_temp}")
-
     # define the boundary as the footprint gdf's geometry column
     boundary = boundary.copy().filter(['geometry'])
 
     # set the only row in the column to True
     # there is only 1 row cause the boundary is only 1 geometry
-    # did Robyn mean to assign tru to only this one row??
+    # did Robyn mean to assign true to only this one row??
     # cause later on, seems like there are NaN values for every row
-    # in this col when we sjoin?
+    # in this col when we sjoin? Cause joining a gdf of 1 row to a gdf with many rows
     boundary[prop_in_fp_temp] = True
-
     # use sjoin to determine if the polygons are within the footprint
     # then drop the column called `index_right`
     gdf = gdf.sjoin(boundary, how='left', predicate=method) \
              .drop(['index_right'], axis=1)
     
-    logging.info(f"Length of gdf after sjoin is {len(gdf)}")
-    
-    logging.info(f"gdf temp col head(10) after sjoin is: {gdf[prop_in_fp_temp].head(10)}")
+    logging.info(f" gdf.head() after sjoin is: {gdf.head()}")
+    logging.info(f" Length of gdf after sjoin is {len(gdf)}")
+    logging.info(f" Unique values of gdf temp col after sjoin and dropping index_rght is: {gdf[prop_in_fp_temp].unique()}")
 
-    # create an object that is only the values that are not NaN (are within the FP)
+    # create a gdf called `within` that contains only the gdf rows where the
+    # values in prop_in_fp_temp are not null (are within the FP)
     within = gdf[gdf[prop_in_fp_temp].notnull()]
-    logging.info(f"within before dropping temp col is: {within}")
-
-    # drop the column from `within` that's used 
+    # drop the column from `within` object that's used 
     # to identify polys that fall outside the footprint
     within = within.drop([prop_in_fp_temp], axis=1)
-    logging.info(f"within after dropping temp col is: {within}")
+    logging.info(f" `within` is: {within}.\nLength of `within` is {len(within)}.")
+
+    # create a gdf called `outside` that contains only the gdf rows where the
+    # values in prop_in_fp_temp are null (are not within the FP)
     outside = gdf[~gdf[prop_in_fp_temp].notnull()]
-
-    logging.info(f"outside before dropping temp col is: {outside}")
     outside = outside.drop([prop_in_fp_temp], axis=1)
-    logging.info(f"outside after dropping temp col is: {outside}")
+    logging.info(f" `outside` is: {outside}.\nLength of `outside` is {len(outside)}.")
 
-    return {
+    # convert variables to dictionary
+    clipped_dict = {
         'keep': within,
         'removed': outside
     }
+
+    return within, clipped_dict
 
 
 def deduplicate_neighbors(
@@ -580,7 +583,8 @@ def deduplicate_by_footprint(
             fp = footprints.get(name)
             if fp is None:
                 continue
-            clip_results = clip_gdf(
+            # ATTENTION NEED TO CHANGE 
+            clip_results = clip_gdf( # NEED TO CHANGE THIS OUTPUT TO BE 2 OBJ SINCE CHANGED THE FUNCTION CLIP_GDF TO OUTPUT BOTH A DICT AND THE CLIPPED GDF
                 gdf=gdf_grp.copy(),
                 boundary=fp.copy(),
                 method=clip_method)

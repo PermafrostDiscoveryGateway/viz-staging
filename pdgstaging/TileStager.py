@@ -127,12 +127,14 @@ class TileStager():
         # Remove any geometries that are not polygons
         gdf = gdf[gdf.geometry.type == 'Polygon']
 
-        logging.info(f"Length of gdf (input file with geometry type filtered for polygons) is {len(gdf)}")
+        logging.info(f"Length of gdf is {len(gdf)}")
 
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
-            gdf = self.set_crs(gdf)
+            # clip to footprint before CRS of IWP data is transformed
+            # to EPSG:4326
             gdf = self.clip_to_footprint(gdf, path)
+            gdf = self.set_crs(gdf)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
             # clip the file by its footprint 
@@ -164,7 +166,7 @@ class TileStager():
             -------
             The GeodataFrame with polygons that fall outside
             the footprint removed if the config is set to do so, 
-            and the duplicates flagged if the cofig
+            and the duplicates flagged if the config
             is set to do so.
 
             Parameters
@@ -185,14 +187,23 @@ class TileStager():
             # pull in footprint as a gdf called fp
             fp_path = self.config.footprint_path_from_input(path, check_exists=True)
             fp = self.get_data(fp_path)
-            logger.info('Footprint found. Clipping...')
+            logger.info(f'Footprint found. Checking CRSs.')
+
+            iwp_crs = gdf.crs
+            fp_crs = fp.crs
+
+            if iwp_crs == fp_crs:
+                logger.info(f"CRSs match. They are both {iwp_crs}.")
+            else:
+                logger.info(f"CRSs do not match.\n IWP's is {iwp_crs}.\nFP's is {fp_crs}.")
+
             # Clip the gdf to the extent of the footprints
-            clip_results = clip_gdf(
+            clipped_gdf, clipped_dict = clip_gdf(
                 gdf = gdf.copy(), # the gdf to clip
                 boundary = fp.copy() # the footprint
             ) # default method is applied
 
-            
+            logger.info(f"clip_results dict is: {clipped_dict}.\nclipped_gdf is {clipped_gdf}.")
 
             #gdf_dict['keep'] = clip_results['keep']
             #removed.append(clip_results['removed'])
@@ -217,14 +228,15 @@ class TileStager():
         if dedup is not None:
             logger.info(f'Labeling duplicates for file {path}.')
             label_duplicates(
-                deduplicate_output = clip_results,
+                deduplicate_output = clipped_dict,
                 prop_duplicated = 'duplicated')
         else:
             # if the config is not set to label,
-            # just convert the dictionary output by clip_gdf
-            # into the clipped gdf and move forward without the labels
-            gdf = clip_results['keep']
-            removed.append(clip_results['removed'])
+            # add the outside of footprint polys to removed list and
+            # return the clipped_gdf output object from clip_gdf
+            # and move forward in workflow without the dup labels
+            removed.append(clipped_dict['removed'])
+            return clipped_gdf
     
     def get_data(self, input_path=None):
         """
@@ -289,14 +301,21 @@ class TileStager():
         start_time = datetime.now()
 
         input_crs = self.config.get('input_crs')
+        # assign the CRS of the TMS to `output_crs`
         output_crs = self.tiles.crs
 
-        # Set the input CRS if it hasn't been set
+        # log the CRS that already exists in the input data
+        crs_in_input = gdf.crs
+        if crs_in_input is not None:
+            logger.info(f"CRS of input data is {crs_in_input}.\nIf input_crs is set in config, setting CRS to that.")
+        else: 
+            logger.info(f"No CRS set in input data. Setting to input_crs specified in config.")
+
         if input_crs:
             gdf.set_crs(
                 input_crs, inplace=True, allow_override=True
             )
-        # Re-project the geoms
+        # Re-project the geoms to the CRS of the TMS
         if output_crs:
             gdf.to_crs(output_crs, inplace=True)
 
