@@ -62,13 +62,10 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
 
         Returns
         -------
-        clipped_dict
             A dictionary containing the clipped GeoDataFrame (the value of the
-            'keep' key), and the GeoDataFrame of polygons that were removed
-            (the value of the 'removed' key).
+            'to_keep' key), and the GeoDataFrame of polygons that were removed
+            (the value of the 'to_remove' key).
 
-        gdf
-            GeoDataFrame that has been clipped to the extent of the footprints.
     """
 
     logging.info("Clipping to footprint is being executed.")
@@ -109,14 +106,10 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
     outside = outside.drop([prop_in_fp_temp], axis=1)
     logging.info(f" `outside` is: {outside}.\nLength of `outside` is {len(outside)}.")
 
-    # convert variables to dictionary
-    clipped_dict = {
-        'keep': within,
-        'removed': outside
-    }
-
-    return within, clipped_dict
-
+    return {
+         'to_keep': within,
+         'to_remove': outside
+     }
 
 def deduplicate_neighbors(
     gdf,
@@ -516,9 +509,9 @@ def deduplicate_by_footprint(
         When the label option is False, then a dictionary with the following
         keys:
 
-        - 'keep' : GeoDataFrame
+        - 'to_keep' : GeoDataFrame
             The deduplicated GeoDataFrame.
-        - 'removed' : GeoDataFrame
+        - 'to_remove' : GeoDataFrame
             The GeoDataFrame with the removed features.
         - 'intersections' : GeoDataFrame
             The GeoDataFrame with the intersections.
@@ -583,8 +576,7 @@ def deduplicate_by_footprint(
             fp = footprints.get(name)
             if fp is None:
                 continue
-            # ATTENTION NEED TO CHANGE 
-            clip_results = clip_gdf( # NEED TO CHANGE THIS OUTPUT TO BE 2 OBJ SINCE CHANGED THE FUNCTION CLIP_GDF TO OUTPUT BOTH A DICT AND THE CLIPPED GDF
+            clip_results = clip_gdf( 
                 gdf=gdf_grp.copy(),
                 boundary=fp.copy(),
                 method=clip_method)
@@ -672,14 +664,13 @@ def label_duplicates(deduplicate_output, prop_duplicated):
 
     Returns
     -------
-
-    GeoDataFrame
-    The combined GDF with duplicated polygons flagged.
+    gdf_with_labels: GeoDataFrame
+        The combined GeoDataFrame with duplicated polygons flagged.
 
     """
 
-    not_duplicates = deduplicate_output['keep']
-    duplicates = deduplicate_output['removed']
+    not_duplicates = deduplicate_output['to_keep']
+    duplicates = deduplicate_output['to_remove']
 
     if duplicates is not None:
         duplicates[prop_duplicated] = True
@@ -692,7 +683,9 @@ def label_duplicates(deduplicate_output, prop_duplicated):
         else:
             not_duplicates[prop_duplicated] = False
 
-    return pd.concat([not_duplicates, duplicates])
+    gdf_with_labels = pd.concat([not_duplicates, duplicates])
+
+    return gdf_with_labels
 
 
 def plot_duplicates(deduplicate_output, split_by):
@@ -700,8 +693,8 @@ def plot_duplicates(deduplicate_output, split_by):
     Plot the output of deduplication (useful for testing & choosing thresholds)
     """
     do = deduplicate_output
-    ax = do['keep'].plot(column=split_by, cmap='Dark2', alpha=0.6)
-    do['removed'].plot(
+    ax = do['to_keep'].plot(column=split_by, cmap='Dark2', alpha=0.6)
+    do['to_remove'].plot(
         ax=ax,
         facecolor='none',
         edgecolor='k',

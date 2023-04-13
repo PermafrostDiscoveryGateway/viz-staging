@@ -137,106 +137,71 @@ class TileStager():
             gdf = self.set_crs(gdf)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
-            # clip the file by its footprint 
-            # after the file has been flagged for duplicates 
-            # and after it's been deduplicated if set to do so at staging
-            # dedup_method = self.config.get_deduplication_method()
-            # dedup_clipToFP = self.config.get_clip_to_footprint()
-            # "deduplicate_clip_to_footprint": True
-            # if dedup_method == "footprints" and clip_to:
-
-            # if dedup_method is not None:
-            #     # Mark all the polygons as not duplicated
-            #     gdf[self.config.polygon_prop('duplicated')] = False
-            #     #  = clip_gdf()
             self.save_tiles(gdf)
         else:
             logger.warning(f'No features in {path}')
     
     def clip_to_footprint(self, gdf, path):
         """
-            If the config is set to clip to footprint,
+            If the config is set to clip_to_footprint=True,
+            and config is set to deduplicate at any step in the workflow,
             find the footprint file associated with the gdf, 
-            clip the gdf to its footprint.
+            determine which polygons fall outside the footprint,
+            and label the polygons as True or False in a new column
+            'duplicated'.
 
-            If the config is set to deduplicate,
-            label duplicates in the gdf,
+            Parameters
+            ----------
+            gdf : GeoDataFrame
+                The GDF undergoing staging.
+            
+            path: string
+                Path to the input file. This is used to retrieve the footprint.
 
             Returns
             -------
             The GeodataFrame with polygons that fall outside
-            the footprint removed if the config is set to do so, 
-            and the duplicates flagged if the config
-            is set to do so.
-
-            Parameters
-            ----------
-            gdf : GeoDataFrame undergoing staging.
+            the footprint labeled as duplicates.
 
         """
-        # Will hold the polygons that were removed
-        removed = []
-        # Will hold the polygons that are to keep
-        #gdf_dict = {}
 
         # check if the config is set to clip to footprint
         clip_to_footprint = self.config.get('deduplicate_clip_to_footprint')
+        # check if the config is set to label duplicates
+        dedup = self.config.get('deduplicate_method')
         # if the config is set to do so, clip to footprint
-        if (clip_to_footprint == True):
-            logger.info(f'Starting clipping to footprint for file {path}.\nLooking for footprint.')
+        if clip_to_footprint and dedup is not None:
+            logger.info(f' Starting clipping to footprint and duplicate labeling for file {path}.')
             # pull in footprint as a gdf called fp
             fp_path = self.config.footprint_path_from_input(path, check_exists=True)
             fp = self.get_data(fp_path)
-            logger.info(f'Footprint found. Checking CRSs.')
+            logger.info(f' Footprint found. Checking CRSs.')
 
             iwp_crs = gdf.crs
             fp_crs = fp.crs
 
             if iwp_crs == fp_crs:
-                logger.info(f"CRSs match. They are both {iwp_crs}.")
+                logger.info(f" CRSs match. They are both {iwp_crs}.")
             else:
-                logger.info(f"CRSs do not match.\n IWP's is {iwp_crs}.\nFP's is {fp_crs}.")
+                logger.info(f" CRSs do not match.\n IWP's CRS is {iwp_crs}.\nFootprint's CRS is {fp_crs}.")
+                # TODO: add in error here
 
-            # Clip the gdf to the extent of the footprints
-            clipped_gdf, clipped_dict = clip_gdf(
+            # determine if polygons fall within or outside the footprint
+            clipped_dict = clip_gdf(
                 gdf = gdf.copy(), # the gdf to clip
                 boundary = fp.copy() # the footprint
             ) # default method is applied
 
-            logger.info(f"clip_results dict is: {clipped_dict}.\nclipped_gdf is {clipped_gdf}.")
+            logger.info(f" clip_results dict is: {clipped_dict}. Labeling duplicates.")
 
-            #gdf_dict['keep'] = clip_results['keep']
-            #removed.append(clip_results['removed'])
-
-            # define the dictionary to pass onto clip_gdf
-            # Get the unique values of the split_by property. Divide the GeoDataFrame.
-            #split_by = self.polygon_prop('filename') # group by input file, there is only 1! 
-            #gdf_grouped = gdf.groupby(split_by)
-            #gdf_dict = {}
-            #for g in gdf_grouped.groups:
-            #    gdf_dict[g] = gdf_grouped.get_group(g)
-
-            # Clip the gdf to the extent of the footprints
-            #for name, gdf_grp in gdf_dict.items():
-            # clip_results = clip_gdf(
-            #     gdf = 
-            # )
-
-        # Next, check if the config is set to deduplicate at any step
-        dedup = self.config.get('deduplicate_method')
-        # if the config is set to do so, deduplicate
-        if dedup is not None:
-            logger.info(f'Labeling duplicates for file {path}.')
-            label_duplicates(
-                deduplicate_output = clipped_dict,
+            gdf_with_labels = label_duplicates(
+                deduplicate_output = clipped_dict, 
                 prop_duplicated = 'duplicated')
+            logger.info(f" Labeling complete. Length of gdf_with_labels is: {len(gdf_with_labels)} and unique values in duplicated column are: {gdf_with_labels['duplicated'].unique()}.")
+            return gdf_with_labels
         else:
-            # if the config is not set to label,
-            # add the outside of footprint polys to removed list and
-            # return the clipped_gdf output object from clip_gdf
-            # and move forward in workflow without the dup labels
-            removed.append(clipped_dict['removed'])
-            return clipped_gdf
+            logger.info(f" Either clip_to_footprint was set to False, or config was not set to deduplicate at any step. Returning original GeoDataFrame.")
+            return gdf
     
     def get_data(self, input_path=None):
         """
