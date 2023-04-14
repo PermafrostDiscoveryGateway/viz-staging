@@ -184,7 +184,15 @@ class TileStager():
                 logger.info(f" CRSs match. They are both {iwp_crs}.")
             else:
                 logger.info(f" CRSs do not match.\n IWP's CRS is {iwp_crs}.\nFootprint's CRS is {fp_crs}.")
-                # TODO: add in error here
+                # transform the footprint to the CRS of the polygon data
+                fp.to_crs(iwp_crs, inplace = True)
+                # check again
+                fp_crs_transformed = fp.crs
+                if iwp_crs == fp_crs_transformed:
+                    logger.info("Footprint CRS has been transformed to CRS of polygons.")
+                else:
+                    logger.error("Failed to transform footprint CRS to CRS of polygons.")
+                    return
 
             # determine if polygons fall within or outside the footprint
             clipped_dict = clip_gdf(

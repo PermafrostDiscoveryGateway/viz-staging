@@ -1274,8 +1274,10 @@ class ConfigManager():
                 'split_by': file_prop,
                 'footprints': footprints,
                 'keep_rules': self.get('deduplicate_keep_rules'),
-                'clip_to_footprint': self.get(
-                    'deduplicate_clip_to_footprint'),
+                # 'clip_to_footprint': self.get(
+                #     'deduplicate_clip_to_footprint'),
+                # # removed because removing option to clip to footprint from deduplicate_by_footprint 
+                # # since we moved clipping to sooner in workflow
                 'clip_method': self.get(
                     'deduplicate_clip_method'),
                 'label': True,
@@ -1307,12 +1309,14 @@ class ConfigManager():
 
     def get_deduplication_method(self):
         """
-            Return the deduplication method
+            Return the deduplication method set in the config.
 
             Returns
             -------
             str
-                The deduplication method.
+                The name of the deduplication method function, 
+                which can be assigned to a new variable and executed as the 
+                deduplciation function.
         """
         method = self.get('deduplicate_method')
         if(method == 'neighbor'):
