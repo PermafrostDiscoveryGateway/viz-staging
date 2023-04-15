@@ -171,7 +171,7 @@ class TileStager():
         dedup = self.config.get('deduplicate_method')
         # if the config is set to do so, clip to footprint
         if clip_to_footprint and dedup is not None:
-            logger.info(f' Starting clipping to footprint and duplicate labeling for file {path}.')
+            logger.info(f' Starting clipping_to_footprint() for file {path}.')
             # pull in footprint as a gdf called fp
             fp_path = self.config.footprint_path_from_input(path, check_exists=True)
             fp = self.get_data(fp_path)
@@ -481,44 +481,110 @@ class TileStager():
             tile_strings = data[self.props['centroid_tile']].astype('str')
             data[self.props['centroid_tile']] = tile_strings
 
+            logger.info(f"data is : {data}.")
+
             # Open the file in write mode by default
             mode = 'w'
 
+            dedup_method = self.config.get_deduplication_method()
             if os.path.isfile(tile_path):
-                # If the file exists and config is set to deduplicate, then
-                # open the file, append the new data, and identify duplicates.
-                # Remove the data if the config is set to remove duplicates
-                # during staging. Overwrite existing file.
-                dedup_method = self.config.get_deduplication_method()
                 if dedup_method is not None:
+                    # If the file exists and config is set to deduplicate, then
+                    # open the file, append the new data, and identify duplicates
+                    # where footprints overlap 
+                    # (duplicates where polygons fall outside
+                    # the footprint were already labeled earlier).
+                    # Then remove the duplicated data if the config is set to remove 
+                    # duplicates during staging. Overwrite existing file.
                     data = self.combine_and_deduplicate(data, tile_path)
-                # If the file exists and config is not set to deduplicate, then
-                # just append the new data to the existing file.
                 else:
+                    # If the file exists and config is not set to deduplicate,
+                    # simply append the polygons to the existing file. Neither file has
+                    # been clipped to footprint, and we will not label the polygons that
+                    # fall within the footprints' intersection
                     mode = 'a'
+            else:
+                if dedup_method is not None:
+                    if self.config.deduplicate_at('staging'):
+                        # if the file does not yet exist and the config is set to deduplicate
+                        # at staging, just remove the polygons that were already labeled as 
+                        # duplicates because they fell outside the footprint,
+                        # and save the tile as a new tile.
 
-            try:
-                # Ignore the FutureWarning raised from geopandas issue 2347
-                with warnings.catch_warnings():
-                    warnings.simplefilter('ignore', FutureWarning)
-                    data.to_file(tile_path, mode=mode)
+                        # dedup_start_time = datetime.now()
+                        # logger.info(f'Starting deduplication in tile {tile_path} with {len(gdf)}'
+                        #             'polygons.')
+                        # dedup_config = self.config.get_deduplication_config(gdf)
+                        # gdf = dedup_method(gdf, **dedup_config)
+                        logger.info("Tile does not yet exist and config is set to deduplicate at staging, so removing polygons that fell outside the footprint.")
+                        prop_duplicated = self.config.polygon_prop('duplicated')
+                        if prop_duplicated in gdf.columns:
+                            data = data[~data[prop_duplicated]]
 
-                # convert each tile from string format to morecantile format 
-                # so it can be added to summary
-                # first create series of tiles in str format
-                tiles_str = data[self.props['tile']].copy()
+                        self.save_new_tile(data = data,
+                                           tile_path = tile_path,
+                                           mode = mode,
+                                           start_time = start_time,
+                                           lock = lock)
+                    else:
+                        # if the file does not yet exist and the config is set to deduplicate
+                        # at a step after staging, just save as a new tile, it already has
+                        # polys labeled as duplicates if they fall outside the footprint,
+                        # and the next time a poly in this tile is produced, it will be checked to see
+                        # if it's a duplicate.
+                        self.save_new_tile(data = data,
+                                           tile_path = tile_path,
+                                           mode = mode,
+                                           start_time = start_time,
+                                           lock = lock)
+                else:
+                    # if the tile does not yet exist and the config is not set to deduplicate
+                    # at any step, just save as a new tile.
+                    self.save_new_tile(data = data,
+                                       tile_path = tile_path,
+                                       mode = mode,
+                                       start_time = start_time,
+                                       lock = lock)
 
-                tiles_morecantile = [self.tiles.tile_from_str(tile) for tile in tiles_str]
+    def save_new_tile(self, data, tile_path, mode, start_time, lock):
+        """
+            Save data as a new tile, if the tile does not already exist.
+            Adds row to staging_summary.csv.
 
-                # Record what was saved
-                data[self.props['tile']] = tiles_morecantile
-                self.summarize(data)
-            finally:
-                # Track the end time, the total time, and the number of vectors
-                logger.info(
-                    f'Saved {tile_path} in {datetime.now() - start_time}'
-                )
-                self.__release_file(lock)
+            Parameters
+            ----------
+            data: GeoDataframe
+
+            Returns
+            -------
+            Nothing. Saves tile in `staged` directory.
+
+        """
+        try:
+            # if the tile does not yet exist and the config is not set to deduplicate,
+            # just save the tile as a new file. 
+
+            # Ignore the FutureWarning raised from geopandas issue 2347
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                data.to_file(tile_path, mode=mode)
+
+            # convert each tile from string format to morecantile format 
+            # so it can be added to summary
+            # first create series of tiles in str format
+            tiles_str = data[self.props['tile']].copy()
+
+            tiles_morecantile = [self.tiles.tile_from_str(tile) for tile in tiles_str]
+
+            # Record what was saved
+            data[self.props['tile']] = tiles_morecantile
+            self.summarize(data)
+        finally:
+            # Track the end time, the total time, and the number of vectors
+            logger.info(
+                f'Saved {tile_path} in {datetime.now() - start_time}'
+            )
+            self.__release_file(lock)
 
     def combine_and_deduplicate(self, gdf, tile_path):
         """

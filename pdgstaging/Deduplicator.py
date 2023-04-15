@@ -648,6 +648,7 @@ def deduplicate_by_footprint(
 
     # Recombine the GDFs from the dictionary
     keep = pd.concat(gdf_dict.values(), ignore_index=True)
+
     removed = pd.concat(removed)
 
     to_return = {
