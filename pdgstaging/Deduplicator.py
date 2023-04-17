@@ -544,20 +544,6 @@ def deduplicate_by_footprint(
         gdf_dict[g] = gdf_grouped.get_group(g)
     names = list(gdf_grouped.groups)
 
-    # if(len(names) == 1):
-    #     # If there is only one group, then there is nothing to deduplicate
-    #     to_return = {
-    #         'to_keep': gdf,
-    #         'to_remove': None,
-    #         'intersections': None
-    #     }
-    #     if label:
-    #         to_return = label_duplicates(to_return, prop_duplicated)
-    #     return to_return
-    # Note: removed this code because even if there is one input file for the entire gdf, 
-    # some polygons likely still need to be removed because they fell outside the footprint
-    # and were labeled True in the `duplicated` column
-
     # If the values of footprints dict are strings, then assume the strings are
     # paths and load the footprints as individual GeoDataFrames
     if all([isinstance(v, str) for v in footprints.values()]):
@@ -575,25 +561,6 @@ def deduplicate_by_footprint(
         # Make sure the footprints are in the same CRS as the GeoDataFrame
         fp_gdf.to_crs(crs, inplace=True)
         footprints[name] = fp_gdf
-
-    # # Clip to gdf to the extent of the footprints
-    # if clip_to_footprint:
-
-    #     logger.info("Clipping to footprint has initiated.")
-
-    #     for name, gdf_grp in gdf_dict.items():
-    #         fp = footprints.get(name)
-    #         if fp is None:
-    #             continue
-    #         clip_results = clip_gdf( 
-    #             gdf=gdf_grp.copy(),
-    #             boundary=fp.copy(),
-    #             method=clip_method)
-    #         gdf_dict[name] = clip_results['keep']
-
-    #         logging.info(f"Length of clip_results['keep'] = {len(clip_results['keep'])}\nLength of clip_results['removed'] = {len(clip_results['removed'])}")
-            
-    #         removed.append(clip_results['removed'])
 
     # Rank the footprints according to the keep_rules
     # to determine which file's polygons to keep where two
