@@ -90,7 +90,7 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
     
     logging.info(f" gdf.head() after sjoin is: {gdf.head()}")
     logging.info(f" Length of gdf after sjoin is {len(gdf)}")
-    logging.info(f" Unique values of gdf temp col after sjoin and dropping index_rght is: {gdf[prop_in_fp_temp].unique()}")
+    logging.info(f" Unique values of gdf temp col after sjoin and dropping index_right is: {gdf[prop_in_fp_temp].unique()}")
 
     # create a gdf called `within` that contains only the gdf rows where the
     # values in prop_in_fp_temp are not null (are within the FP)
@@ -128,8 +128,8 @@ def deduplicate_neighbors(
 ):
     """
 
-    Remove duplicated polygons from two sources in a single GeoDataFrame, even
-    when geometries are not identical.
+    Identify duplicated polygons from two sources in a single GeoDataFrame, even
+    when geometries are not identical. Remove the duplicated polygons if label=False.
 
     Two polygons are considered duplicates of one another when they:
         1. have a different value for a specific property (e.g. 'source_file'),
@@ -142,15 +142,15 @@ def deduplicate_neighbors(
    The deduplication can be set to ignore centroid distance or ignore the
    overlap proportion.
 
-    When two polygons are duplicated, only one is kept in the returned 'keep'
+    When two polygons are identified as duplicates, only one is kept in the returned 'to_keep'
     dataframe. Which one is kept is determined by the 'keep_rules' parameter,
     which indicates the property to compare, and the rule to apply ('larger' or
     'smaller'). For example, to keep the newest polygon, set a keep_rule for a
     more recent date property, e.g. ('Date', 'larger').
 
-    A dictionairy is returned with the deduplicated GeoDataFrame ('keep'), the
-    GeoDataFrame with the dropped duplicates ('remove'), and optionally, the
-    intersection geometries of duplicated polygons ('intersection').
+    A dictionary is returned with the deduplicated GeoDataFrame ('to_keep'), the
+    GeoDataFrame with the dropped duplicates ('to_remove'), and optionally, the
+    intersection geometries of duplicated polygons ('intersections').
 
     Parameters
     ----------
@@ -230,9 +230,9 @@ def deduplicate_neighbors(
         When the label option is False, then a dictionary with the following
         keys:
 
-        - 'keep' : GeoDataFrame
+        - 'to_keep' : GeoDataFrame
             The deduplicated GeoDataFrame.
-        - 'removed' : GeoDataFrame
+        - 'to_remove' : GeoDataFrame
             The GeoDataFrame with the removed features.
         - 'intersections' : GeoDataFrame
             The GeoDataFrame with the intersections.
@@ -305,14 +305,14 @@ def deduplicate_neighbors(
     gdfs = [gdf_grouped.get_group(x) for x in gdf_grouped.groups]
 
     to_return = {
-        'keep': None,
+        'to_keep': None,
         'intersections': None,
-        'removed': None
+        'to_remove': None
     }
 
     # If there is only one group, then there is nothing to deduplicate
     if len(gdfs) < 2:
-        to_return['keep'] = gdf_original.drop(columns=[prop_id])
+        to_return['to_keep'] = gdf_original.drop(columns=[prop_id])
         if label:
             to_return = label_duplicates(to_return, prop_duplicated)
         return to_return
@@ -417,20 +417,21 @@ def deduplicate_neighbors(
             ascending=sort_order,
             inplace=True)
         duplicates['remove'] = duplicates.duplicated(prop_int_id, keep='first')
+        # 'remove' here is correct, do not change to 'to_remove'
 
         # Get the IDs of polygons to remove, and add them to the list
         ids_to_remove_pair = duplicates[duplicates['remove']][prop_id]
         ids_to_remove.update(ids_to_remove_pair)
 
     # Remove polygons from the original gdf when they have an ID that is in the
-    # to_remove list
+    # remove list
     remove = gdf_original[prop_id].isin(ids_to_remove)
 
     # Remove the prop_id column, no longer needed
     gdf_original.drop([prop_id], axis=1, inplace=True)
 
-    to_return['removed'] = gdf_original[remove]
-    to_return['keep'] = gdf_original[~remove]
+    to_return['to_remove'] = gdf_original[remove]
+    to_return['to_keep'] = gdf_original[~remove]
 
     if label:
         to_return = label_duplicates(to_return, prop_duplicated)
@@ -444,7 +445,6 @@ def deduplicate_by_footprint(
     footprints,
     keep_rules=[],
     return_intersections=False,
-    #clip_to_footprint=True, # moved clipping to earlier in workflow
     clip_method='within',
     label=True,
     prop_duplicated='duplicated'
@@ -485,12 +485,6 @@ def deduplicate_by_footprint(
     return_intersections : bool, optional
         If true, the polygons that represent the intersections between
         footprints will be returned. Default is False.
-    clip_to_footprint : bool, optional
-        If true, the polygons that do not fall within the footprint will be
-        removed before deduplication. Default is False.
-
-        # NOTE: REMOVE THE clip_to_footprint DOCUMENTATION IF REMOVING clip_to_footprint argument 
-
     clip_method : str, optional
         The method to use to determine if a polygon falls within the footprint.
         The method is used as the the predicate for an sjoin operation between
@@ -637,7 +631,7 @@ def deduplicate_by_footprint(
 
 def label_duplicates(deduplicate_output, prop_duplicated):
     """
-    Recombine the keep & removed GDFs and mark the removed as duplicates
+    Recombine the to_keep & to_remove GDFs and mark the removed as duplicates
 
     Parameters
     ----------

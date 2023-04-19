@@ -175,7 +175,7 @@ class TileStager():
             # pull in footprint as a gdf called fp
             fp_path = self.config.footprint_path_from_input(path, check_exists=True)
             fp = self.get_data(fp_path)
-            logger.info(f' Footprint found. Checking CRSs.')
+            logger.info(f' Checking CRSs of polygons and footprint.')
 
             iwp_crs = gdf.crs
             fp_crs = fp.crs
@@ -205,7 +205,7 @@ class TileStager():
             gdf_with_labels = label_duplicates(
                 deduplicate_output = clipped_dict, 
                 prop_duplicated = 'duplicated')
-            logger.info(f" Labeling complete. Length of gdf_with_labels is: {len(gdf_with_labels)} and unique values in duplicated column are: {gdf_with_labels['duplicated'].unique()}.")
+            logger.info(f" Labeling complete. Length of gdf_with_labels is: {len(gdf_with_labels)}\nUnique values in duplicated column are: {gdf_with_labels['duplicated'].unique()}.\nNumber of True values is {gdf_with_labels['duplicated'].value_counts()[True]}.\nNumber of False values is {gdf_with_labels['duplicated'].value_counts()[False]}.")
             return gdf_with_labels
         else:
             logger.info(f" Either clip_to_footprint was set to False, or config was not set to deduplicate at any step. Returning original GeoDataFrame.")
@@ -372,12 +372,7 @@ class TileStager():
         centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
         gdf[props['centroid_within_tile']] = centroid_only
 
-        # Add the column to flag duplicate polygons. This will be set to True
-        # later if duplicates are found.
-        dedup_method = self.config.get_deduplication_method()
-        if dedup_method is not None:
-            # Mark all the polygons as not duplicated
-            gdf[self.config.polygon_prop('duplicated')] = False
+        logger.info(f"Columns present in the GDF are: {gdf.columns}.\nUnique values in the `duplicated` column are: {gdf['duplicated'].unique()}. (Should be both True and False).")
 
         logger.info(
             f'Added properties for {num_polygons} vectors in '
