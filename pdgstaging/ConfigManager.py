@@ -417,7 +417,7 @@ class ConfigManager():
         'deduplicate_overlap_both': True,
         'deduplicate_centroid_tolerance': None,
         'deduplicate_distance_crs': 'EPSG:3857',
-        'deduplicate_clip_to_footprint': False,
+        #'deduplicate_clip_to_footprint': True, # likely need to un-comment this out bc this is a default value but we also specify it in config for IWP so wont error this time, but if user doesnt then it will error
         'deduplicate_clip_method': 'within'
     }
 
@@ -1274,12 +1274,8 @@ class ConfigManager():
                 'split_by': file_prop,
                 'footprints': footprints,
                 'keep_rules': self.get('deduplicate_keep_rules'),
-                # 'clip_to_footprint': self.get(
-                #     'deduplicate_clip_to_footprint'),
-                # # removed because removing option to clip to footprint from deduplicate_by_footprint 
-                # # since we moved clipping to sooner in workflow
-                'clip_method': self.get(
-                    'deduplicate_clip_method'),
+                #'clip_to_footprint': True, # don't pass this to the dedup approach bc it doesnt do the clipping anymore
+                #'clip_method': 'within', # don't pass this to the dedup approach bc it doesnt do the clipping anymore
                 'label': True,
                 'prop_duplicated': self.polygon_prop('duplicated')
             }

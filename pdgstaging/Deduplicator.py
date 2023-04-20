@@ -445,7 +445,6 @@ def deduplicate_by_footprint(
     footprints,
     keep_rules=[],
     return_intersections=False,
-    clip_method='within',
     label=True,
     prop_duplicated='duplicated'
 ):
@@ -485,13 +484,6 @@ def deduplicate_by_footprint(
     return_intersections : bool, optional
         If true, the polygons that represent the intersections between
         footprints will be returned. Default is False.
-    clip_method : str, optional
-        The method to use to determine if a polygon falls within the footprint.
-        The method is used as the the predicate for an sjoin operation between
-        the polygons GDF and the footprint GDF. Can be one of: 'contains',
-        'contains_properly', 'covers', 'crosses', 'intersects', 'overlaps',
-        'touches', 'within' (any option listed by
-        geopandas.GeoDataFrame.sindex.valid_query_predicates)
     label : bool, optional
         Set to True (default) to return the input GDF with the polygons
         identified as duplicates labeled as such. The column name that will be
@@ -518,10 +510,25 @@ def deduplicate_by_footprint(
         prop_duplicated column.
     """
 
+    logger.info(f"Executing deduplicate_by_footprint()")
+
     gdf = gdf.copy()
 
-    # Will hold the polygons that were removed
-    removed = []
+    # `to_remove` list will hold the polygons that fit either of the criteria:
+    # 1. were previously labeled True for `duplicated` col because poly
+    # fell outside footprint
+    # 2. are labeled as True for `duplicated` col within this function
+    # based on overlap of footprints
+    to_remove = []
+
+    # First, add the polygons that were already labeled as duplicates because
+    # fell outside footprint
+    known_dups = gdf[gdf['duplicated'] == True]
+    logger.info(f"Number of polygons appending to list `to_remove` is {len(known_dups)}.")
+    to_remove.append(known_dups)
+
+    logger.info(f"After initially adding the previously identified dups df to list to_remove, length is {len(to_remove)}\nand some values in list are {to_remove}.")
+
     # Will hold the polygons that defined the footprint intersections
     intersections = []
 
@@ -604,17 +611,23 @@ def deduplicate_by_footprint(
         # Update the dictionary with the reduced GDF
         gdf_dict[least_preferred] = reduced
 
-        # Save the removed polygons to the empty list defined at start of function
-        removed.append(to_reduce[overlap_boolean])
+        # Save the removed polygons to the list defined at start of function
+        # that holds all dataframes with polys labeled as duplicates
+        to_remove.append(to_reduce[overlap_boolean])
+        logger.info(f"Appended {len(to_reduce)} polygons to list `to_remove`.")
 
-    # Recombine the GDFs from the dictionary
+    # Recombine the GDFs from the dictionary:
     keep = pd.concat(gdf_dict.values(), ignore_index=True)
 
-    removed = pd.concat(removed)
+    # combine the list of dataframes (called `to_remove`) into one dataframe
+    # along rows (stack the dataframes)
+    to_remove = pd.concat(to_remove) 
+
+    logger.info(f"After adding the newly identified dups to list, length of number of identified polygons is {len(to_remove)}\nand some values in list are {to_remove[0:10]}\nand some values in the `duplicated` col are {to_remove['duplicated'][0:10]}\nand the cols are {to_remove.columns}.")
 
     to_return = {
         'to_keep': keep,
-        'to_remove': removed
+        'to_remove': to_remove
     }
 
     if return_intersections:
@@ -636,7 +649,7 @@ def label_duplicates(deduplicate_output, prop_duplicated):
     Parameters
     ----------
     deduplicate_output : dict
-        The output of one of the deduplication methods
+        The output of clip_gdf() or one the deduplication methods
 
     prop_duplicated : str
         The column name to use to flag duplicate polygons

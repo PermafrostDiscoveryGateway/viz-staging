@@ -198,7 +198,7 @@ class TileStager():
             clipped_dict = clip_gdf(
                 gdf = gdf.copy(), # the gdf to clip
                 boundary = fp.copy() # the footprint
-            ) # default method is applied
+            ) # default method is applied: 'within'
 
             logger.info(f" clip_results dict is: {clipped_dict}. Labeling duplicates.")
 
@@ -489,20 +489,22 @@ class TileStager():
                     # the footprint were already labeled earlier).
                     # Then remove all the duplicated data if the config is 
                     # set to remove duplicates during staging.
+                    logger.info("Tile exists and dedup is set to occur at some step, so executing `combine_and_deduplicate()`")
                     data = self.combine_and_deduplicate(data, tile_path)
 
                     # Overwrite existing file.
                     self.save_new_tile(data = data,
-                                           tile_path = tile_path,
-                                           mode = mode,
-                                           start_time = start_time,
-                                           lock = lock)
+                                        tile_path = tile_path,
+                                        mode = mode,
+                                        start_time = start_time,
+                                        lock = lock)
                 else:
                     # If the file exists and config is not set to deduplicate
                     # at any step, simply append the polygons to the existing file.
                     # Neither file has been clipped to footprint, and we will not label
                     # the polygons that fall within the footprints' intersection
                     # as duplicates.
+                    logger.info("Tile exists but dedup is not set to occur, so just appending the polygons.")
                     mode = 'a'
             else:
                 if dedup_method is not None:
@@ -533,6 +535,7 @@ class TileStager():
                         # polys labeled as duplicates if they fall outside the footprint,
                         # and the next time a poly in this tile is produced, it will be checked 
                         # for duplicates where the two footprints overlap.
+                        logger.info("Tile does not yet exist and config is set to deduplicate at a step after staging, so just saving the new tile. Duplicates from clip_gdf  were identified.")
                         self.save_new_tile(data = data,
                                            tile_path = tile_path,
                                            mode = mode,
@@ -542,6 +545,7 @@ class TileStager():
                     # If the tile does not yet exist and the config is not set to deduplicate
                     # at any step, just save as a new tile. No duplicates were labeled earlier
                     # either, because we did not check if any fell outside the footprint.
+                    logger.info("Tile does not yet exist and config is not set to deduplicate, so just saving the new tile. Duplicates from clip_gdf were not identified.")
                     self.save_new_tile(data = data,
                                        tile_path = tile_path,
                                        mode = mode,
@@ -606,7 +610,9 @@ class TileStager():
     def combine_and_deduplicate(self, gdf, tile_path):
         """
             Combine existing data for a tile with the new data in a
-            GeoDataFrame, and deduplicate the result.
+            GeoDataFrame, label polygons as duplicates using one of 
+            the deduplication methods, and remove tiles labeled as 
+            duplicates if the config is set to do so at staging.
 
             Parameters
             ----------
