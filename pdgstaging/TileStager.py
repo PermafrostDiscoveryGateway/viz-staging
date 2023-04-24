@@ -195,17 +195,17 @@ class TileStager():
                     return
 
             # determine if polygons fall within or outside the footprint
-            clipped_dict = clip_gdf(
+            gdf_with_labels = clip_gdf(
                 gdf = gdf.copy(), # the gdf to clip
                 boundary = fp.copy() # the footprint
             ) # default method is applied: 'within'
 
-            logger.info(f" clip_results dict is: {clipped_dict}. Labeling duplicates.")
+            logger.info(f" gdf_with_labels is: {gdf_with_labels}.")
 
-            gdf_with_labels = label_duplicates(
-                deduplicate_output = clipped_dict, 
-                prop_duplicated = 'duplicated')
-            logger.info(f" Labeling complete. Length of gdf_with_labels is: {len(gdf_with_labels)}\nUnique values in duplicated column are: {gdf_with_labels['duplicated'].unique()}.\nNumber of True values is {gdf_with_labels['duplicated'].value_counts()[True]}.\nNumber of False values is {gdf_with_labels['duplicated'].value_counts()[False]}.")
+            # gdf_with_labels = label_duplicates(
+            #     deduplicate_output = clipped_dict, 
+            #     prop_duplicated = 'duplicated')
+            # logger.info(f" Labeling complete. Length of gdf_with_labels is: {len(gdf_with_labels)}\nUnique values in duplicated column are: {gdf_with_labels['duplicated'].unique()}.\nNumber of True values is {gdf_with_labels['duplicated'].value_counts()[True]}.\nNumber of False values is {gdf_with_labels['duplicated'].value_counts()[False]}.")
             return gdf_with_labels
         else:
             logger.info(f" Either clip_to_footprint was set to False, or config was not set to deduplicate at any step. Returning original GeoDataFrame.")
@@ -372,7 +372,7 @@ class TileStager():
         centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
         gdf[props['centroid_within_tile']] = centroid_only
 
-        logger.info(f"Columns present in the GDF are: {gdf.columns}.\nUnique values in the `duplicated` column are: {gdf['duplicated'].unique()}. (Should be both True and False).")
+        logger.info(f"Columns present in the GDF are: {gdf.columns}.\nUnique values in the `duplicated` column are: {gdf['staging_duplicated'].unique()}. (Should be both True and False).")
 
         logger.info(
             f'Added properties for {num_polygons} vectors in '
@@ -520,6 +520,7 @@ class TileStager():
                         # dedup_config = self.config.get_deduplication_config(gdf)
                         # gdf = dedup_method(gdf, **dedup_config)
                         logger.info("Tile does not yet exist and config is set to deduplicate at staging, so removing polygons that fell outside the footprint.")
+                        # retreive the name of the duplicated column from config
                         prop_duplicated = self.config.polygon_prop('duplicated')
                         if prop_duplicated in data.columns:
                             data = data[~data[prop_duplicated]]
@@ -646,6 +647,7 @@ class TileStager():
             gdf.to_crs(existing_gdf.crs, inplace=True)
 
         gdf = pd.concat(to_concat, ignore_index=True)
+        gdf.reset_index(drop = True, inplace = True)
         dedup_config = self.config.get_deduplication_config(gdf)
 
         logger.info(

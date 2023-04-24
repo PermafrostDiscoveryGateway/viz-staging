@@ -39,7 +39,6 @@ def keep_rules_to_sort_order(keep_rules):
     sort_order = [x[1] == 'smaller' for x in keep_rules]
     return sort_props, sort_order
 
-
 def clip_gdf(gdf=None, boundary=None, method='within'):
     """
         Remove polygons from a GeoDataFrame that fall outside of some boundary.
@@ -106,10 +105,19 @@ def clip_gdf(gdf=None, boundary=None, method='within'):
     outside = outside.drop([prop_in_fp_temp], axis=1)
     logging.info(f" `outside` is: {outside}.\nLength of `outside` is {len(outside)}.")
 
-    return {
-         'to_keep': within,
-         'to_remove': outside
-     }
+    # NEED TO CHANGE THESE TO NOT BE HARD-CODED
+    # USE self.config.polygon_prop('duplicated') I think?
+    outside['staging_duplicated'] = True
+    within['staging_duplicated'] = False
+
+    # stack the gdf's
+    gdf_with_labels = pd.concat([outside, within], ignore_index = True)
+    gdf_with_labels.reset_index(drop = True, inplace = True)
+
+    logger.info(f"After clipping to fp, length of gdf_with_labels is {len(gdf_with_labels)}")
+
+    return gdf_with_labels
+
 
 def deduplicate_neighbors(
     gdf,
@@ -446,7 +454,7 @@ def deduplicate_by_footprint(
     keep_rules=[],
     return_intersections=False,
     label=True,
-    prop_duplicated='duplicated'
+    prop_duplicated='staging_duplicated'
 ):
     """
 
@@ -521,13 +529,11 @@ def deduplicate_by_footprint(
     # based on overlap of footprints
     to_remove = []
 
-    # First, add the polygons that were already labeled as duplicates because
-    # fell outside footprint
-    known_dups = gdf[gdf['duplicated'] == True]
-    logger.info(f"Number of polygons appending to list `to_remove` is {len(known_dups)}.")
-    to_remove.append(known_dups)
-
-    logger.info(f"After initially adding the previously identified dups df to list to_remove, length is {len(to_remove)}\nand some values in list are {to_remove}.")
+    # subset the gdf to just polys that were identified as dups because
+    # they fell outside the footprint, earlier in the staging step
+    # NEED TO CHANGE THIS TO NOT BE HARD CODED
+    known_dups = gdf[gdf['staging_duplicated'] == True]
+    logger.info(f"Length of known_dups is {len(known_dups)}.")
 
     # Will hold the polygons that defined the footprint intersections
     intersections = []
@@ -621,23 +627,53 @@ def deduplicate_by_footprint(
 
     # combine the list of dataframes (called `to_remove`) into one dataframe
     # along rows (stack the dataframes)
-    to_remove = pd.concat(to_remove) 
+    to_remove = pd.concat(to_remove)
+    to_remove.reset_index(drop = True, inplace = True) 
+    logger.info(f"After concatenating just the newly identified dups as `to_remove`, number of identified duplicates is {len(to_remove)}.")
 
-    logger.info(f"After adding the newly identified dups to list, length of number of identified polygons is {len(to_remove)}\nand some values in list are {to_remove[0:10]}\nand some values in the `duplicated` col are {to_remove['duplicated'][0:10]}\nand the cols are {to_remove.columns}.")
+    # the two duplicate dataframes have the same columns, so concatenate them (stack)
+    to_remove_all = pd.concat([to_remove, known_dups], ignore_index = True)
+    to_remove_all.reset_index(drop = True, inplace = True)
+    logger.info(f"After concatenating all dups of both types, the number of identified duplicates is {len(to_remove_all)}.")
 
-    to_return = {
-        'to_keep': keep,
-        'to_remove': to_remove
-    }
+    # ensure that the `keep` gdf has the `duplicated` col too, and values in col = False
+    if keep is not None:
+        # if the column `prop_duplicated` is already present,
+        # set values to True if already set to True
+        # if the value is not already True, set it to False
+        if prop_duplicated in keep.columns:
+            keep[prop_duplicated] = \
+                keep[prop_duplicated].apply(
+                    lambda x: True if x is True else False)
+        # if the column `prop_duplicated` is not already present, 
+        # create it and set all values to False
+        else: 
+            keep[prop_duplicated] = False
 
-    if return_intersections:
-        to_return['intersections'] = pd.concat(intersections, ignore_index=True)
+    # ensure that the labels for all of `duplicated` are True for to_remove_all
+    if to_remove_all is not None:
+        to_remove_all[prop_duplicated] = True
 
-    # if label is true, return a GDF with all original polygons present
-    # but the polygons that fall within the region where footprints overlap
-    # are labeled True in the duplicated column
-    if label:
-        to_return = label_duplicates(to_return, prop_duplicated) 
+    # combine the keep and to_remove_all into 1 gdf, stack them
+    logger.info(f"Do `keep` and `to_remove_all` have same columns? {keep.columns == to_remove_all.columns}")
+    to_return = pd.concat([keep, to_remove_all], ignore_index = True)
+    to_return.reset_index(drop = True, inplace = True)
+
+    logger.info(f"to_return with labels is {to_return}")
+
+    #if return_intersections:
+    #    to_return['intersections'] = pd.concat(intersections, ignore_index=True)
+    # need to figure out replacement for this if move forward without dict 
+
+    if 'staging_duplicated' in to_return.columns:
+        if True in to_return['staging_duplicated'].values:
+            sum_true = (to_return['staging_duplicated'] == True).value_counts()[True]
+            logger.info(f"Sum of True values in the `staging_duplicated` col is: {sum_true}")
+        else:
+            sum_true = 0
+            logger.info(f"Sum of True values in the `staging_duplicated` col is: {sum_true}")
+    else:
+        logger.info(f"'staging_duplicated' is not a column present after labeling.")
 
     return to_return
 
@@ -664,10 +700,12 @@ def label_duplicates(deduplicate_output, prop_duplicated):
     not_duplicates = deduplicate_output['to_keep']
     duplicates = deduplicate_output['to_remove']
 
-    # create a new column in the GDF that represents the polygons to remove
-    # and populate each row with True values
+    # make all values True in the column in the GDF 
+    # that represents the polygons to remove because they're dups
     if duplicates is not None:
         duplicates[prop_duplicated] = True
+
+    logger.info(f"After setting all values in duplicates[prop_duplicated] to True, length is {len(duplicates)}.")
 
     if not_duplicates is not None:
         # if the column `prop_duplicated` is already present,
@@ -682,7 +720,10 @@ def label_duplicates(deduplicate_output, prop_duplicated):
         else: 
             not_duplicates[prop_duplicated] = False
 
-    gdf_with_labels = pd.concat([not_duplicates, duplicates])
+    gdf_with_labels = pd.concat([not_duplicates, duplicates], ignore_index = True)
+    gdf_with_labels.reset_index(drop = True, inplace = True)
+
+    logger.info(f"gdf_with_labels is {gdf_with_labels}. gdf_with_labels[prop_duplicated] is {gdf_with_labels['duplicated']}")
 
     return gdf_with_labels
 
