@@ -1255,8 +1255,7 @@ class ConfigManager():
                 'centroid_tolerance': self.get(
                     'deduplicate_centroid_tolerance'),
                 'distance_crs': self.get('deduplicate_distance_crs'),
-                'return_intersections': False,
-                'label': True,
+                'return_intersections': False, # not used at the moment, need to re-introduce this feature since removed dict step when labeling duplicates
                 'prop_duplicated': self.polygon_prop('duplicated')
             }
         if(method == 'footprints'):
@@ -1273,10 +1272,7 @@ class ConfigManager():
             return {
                 'split_by': file_prop,
                 'footprints': footprints,
-                'keep_rules': self.get('deduplicate_keep_rules'),
-                #'clip_to_footprint': True, # don't pass this to the dedup approach bc it doesnt do the clipping anymore
-                #'clip_method': 'within', # don't pass this to the dedup approach bc it doesnt do the clipping anymore
-                'label': True,
+                'keep_rules': self.get('deduplicate_keep_rules'), 
                 'prop_duplicated': self.polygon_prop('duplicated')
             }
 
@@ -1320,21 +1316,6 @@ class ConfigManager():
         if(method == 'footprints'):
             return deduplicate_by_footprint
         return None
-    
-    # def get_clipToFP_choice(self):
-    #     """
-    #         Return the clip to footprint True/False choice
-
-    #         Returns
-    #         -------
-    #         str
-    #             The clip to footprint True/False choice
-    #     """
-    #     choice = self.get('deduplicate_clip_to_footprint')
-    #     if(choice == True):
-    #         return 'True'
-    #     if(choice == False):
-    #         return 'False'
 
 
     def footprint_path_from_input(self, path, check_exists=False):

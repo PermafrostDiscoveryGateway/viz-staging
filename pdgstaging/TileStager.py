@@ -10,7 +10,7 @@ import pandas as pd
 from filelock import FileLock
 
 from . import ConfigManager, TilePathManager, TMSGrid
-from .Deduplicator import clip_gdf, label_duplicates
+from .Deduplicator import clip_gdf
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +148,7 @@ class TileStager():
             find the footprint file associated with the gdf, 
             determine which polygons fall outside the footprint,
             and label the polygons as True or False in a new column
-            'duplicated'.
+            'staging_duplicated'.
 
             Parameters
             ----------
@@ -195,17 +195,16 @@ class TileStager():
                     return
 
             # determine if polygons fall within or outside the footprint
+            # first retrieve the name of the column we will use to label duplicates
+            prop_duplicated = self.config.polygon_prop('duplicated')
+            logger.info(f"Before clipping, prop_duplicated is {prop_duplicated}. Defaults to be `staging_duplicated`")
             gdf_with_labels = clip_gdf(
                 gdf = gdf.copy(), # the gdf to clip
-                boundary = fp.copy() # the footprint
-            ) # default method is applied: 'within'
+                boundary = fp.copy(), # the footprint
+                method = 'within',
+                prop_duplicated = prop_duplicated
+            )
 
-            logger.info(f" gdf_with_labels is: {gdf_with_labels}.")
-
-            # gdf_with_labels = label_duplicates(
-            #     deduplicate_output = clipped_dict, 
-            #     prop_duplicated = 'duplicated')
-            # logger.info(f" Labeling complete. Length of gdf_with_labels is: {len(gdf_with_labels)}\nUnique values in duplicated column are: {gdf_with_labels['duplicated'].unique()}.\nNumber of True values is {gdf_with_labels['duplicated'].value_counts()[True]}.\nNumber of False values is {gdf_with_labels['duplicated'].value_counts()[False]}.")
             return gdf_with_labels
         else:
             logger.info(f" Either clip_to_footprint was set to False, or config was not set to deduplicate at any step. Returning original GeoDataFrame.")
