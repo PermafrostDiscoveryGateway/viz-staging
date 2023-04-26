@@ -201,7 +201,7 @@ class TileStager():
             gdf_with_labels = clip_gdf(
                 gdf = gdf.copy(), # the gdf to clip
                 boundary = fp.copy(), # the footprint
-                method = 'within',
+                method = 'intersects',
                 prop_duplicated = prop_duplicated
             )
 

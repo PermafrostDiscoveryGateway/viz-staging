@@ -39,7 +39,7 @@ def keep_rules_to_sort_order(keep_rules):
     sort_order = [x[1] == 'smaller' for x in keep_rules]
     return sort_props, sort_order
 
-def clip_gdf(gdf = None, boundary = None, method = 'within', prop_duplicated = None):
+def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated = None):
     """
         Remove polygons from a GeoDataFrame that fall outside of some boundary.
         Determine if the polygons in the GeoDataFrame are within the boundary

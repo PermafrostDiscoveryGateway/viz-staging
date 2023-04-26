@@ -418,7 +418,7 @@ class ConfigManager():
         'deduplicate_centroid_tolerance': None,
         'deduplicate_distance_crs': 'EPSG:3857',
         #'deduplicate_clip_to_footprint': True, # likely need to un-comment this out bc this is a default value but we also specify it in config for IWP so wont error this time, but if user doesnt then it will error
-        'deduplicate_clip_method': 'within'
+        'deduplicate_clip_method': 'intersects'
     }
 
     tiling_scheme_map = {
