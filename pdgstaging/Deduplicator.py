@@ -10,8 +10,8 @@ from datetime import datetime
 import numpy as np
 from filelock import FileLock
 import logging
-# NOTE: DO NOT IMPORT ConfigManager, TilePathManager, Grid 
-# BECAUSE IT CAUSES CONFIG IMPORT ERROR DURING RASTERIZATION
+# NOTE: DO NOT IMPORT ConfigManager, TilePathManager, Grid
+# because causes config import error for rasterization step 
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,6 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
 
     """
 
-    logging.info("Clipping to footprint is being executed.")
-
     # Temporary property to use during the sjoin
     # assigns an identifier to 
     prop_in_fp_temp = 'WITHIN_BOUNDARY_' + uuid.uuid4().hex
@@ -86,10 +84,6 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
     # then drop the column called `index_right`
     gdf = gdf.sjoin(boundary, how='left', predicate=method) \
              .drop(['index_right'], axis=1)
-    
-    logging.info(f" gdf.head() after sjoin is: {gdf.head()}")
-    logging.info(f" Length of gdf after sjoin is {len(gdf)}")
-    logging.info(f" Unique values of gdf temp col after sjoin and dropping index_right is: {gdf[prop_in_fp_temp].unique()}")
 
     # create a gdf called `within` that contains only the gdf rows where the
     # values in prop_in_fp_temp are not null (are within the FP)
@@ -129,7 +123,8 @@ def deduplicate_neighbors(
     centroid_tolerance=None,
     distance_crs='EPSG:3857',
     return_intersections=False,
-    prop_duplicated='staging_duplicated' # defaults if these options aren't already in config
+    prop_duplicated='staging_duplicated'
+     # defaults to these options only if aren't already specified in config
 ):
     """
 
@@ -227,20 +222,13 @@ def deduplicate_neighbors(
 
     Returns
     -------
-    dict or GeoDataFrame
-        When the label option is False, then a dictionary with the following
-        keys:
+    GeoDataFrame
+        Returns the input GDF with the polygons flagged as duplicates. 
+        Duplicates are marked as True in the prop_duplicated column.
 
-        - 'to_keep' : GeoDataFrame
-            The deduplicated GeoDataFrame.
-        - 'to_remove' : GeoDataFrame
-            The GeoDataFrame with the removed features.
-        - 'intersections' : GeoDataFrame
-            The GeoDataFrame with the intersections.
-
-        When the label option is True, then returns the input GDF with the
-        polygons flagged as duplicates. Duplicates are marked as True in the
-        prop_duplicated column.
+        'intersections' represents the GeoDataFrame with the intersections. 
+        It has not been integrated into the function again since the deduplication 
+        approach changed from returning a dictionary to returning a labeled GDF.
     """
 
     if split_by is None:
@@ -314,9 +302,34 @@ def deduplicate_neighbors(
     # If there is only one group, then there is nothing to deduplicate
     if len(gdfs) < 2:
         to_return['to_keep'] = gdf_original.drop(columns=[prop_id])
-        if label:
-            to_return = label_duplicates(to_return, prop_duplicated)
-        return to_return
+
+        # label duplicates with boolean column
+        not_duplicates = to_return['to_keep']
+        duplicates = to_return['to_remove'] # None
+
+        if not_duplicates is not None:
+            if prop_duplicated in not_duplicates.columns:
+                # if the gdf of polygons to keep exists and
+                # contains the column `prop_duplicated`
+                # set values to True if already set to True
+                # if the value is not already True, set it to False
+                not_duplicates[prop_duplicated] = \
+                    not_duplicates[prop_duplicated].apply(
+                        lambda x: True if x is True else False)
+            else:
+                # if the column `prop_duplicated` is not already present, 
+                # create it and set all values to False
+                not_duplicates[prop_duplicated] = False
+
+        # if duplicates is not None:
+        #     # if duplicates were found
+        #     duplicates[prop_duplicated] = True
+        #     # combine both dataframes if 
+        #     to_return = pd.concat([not_duplicates, duplicates], ignore_index = True)
+        #     to_return.reset_index(drop = True, inplace = True)
+        # else: 
+
+        return not_duplicates
 
     # Set will hold all of the polygons IDs that we will remove
     ids_to_remove = set()
@@ -434,8 +447,23 @@ def deduplicate_neighbors(
     to_return['to_remove'] = gdf_original[remove]
     to_return['to_keep'] = gdf_original[~remove]
 
-    if label:
-        to_return = label_duplicates(to_return, prop_duplicated) # change this! label_duplicates has been removed 
+    keep = to_return['keep']
+    to_remove = to_return['to_remove']
+
+    # combine the keep and to_remove_all into 1 gdf, 
+    # stack them because already have the same columns
+    to_return = pd.concat([keep, to_remove], ignore_index = True)
+    to_return.reset_index(drop = True, inplace = True)
+
+    if prop_duplicated in to_return.columns:
+        if True in to_return[prop_duplicated].values:
+            sum_true = (to_return[prop_duplicated] == True).value_counts()[True]
+            logger.info(f"Sum of True values in the {prop_duplicated} col is: {sum_true}")
+        else:
+            sum_true = 0
+            logger.info(f"Sum of True values in the {prop_duplicated} col is: {sum_true}")
+    else:
+        logger.info(f"{prop_duplicated} is not a column present after labeling.")
 
     return to_return
 
@@ -446,7 +474,8 @@ def deduplicate_by_footprint(
     footprints,
     keep_rules=[],
     return_intersections=False,
-    prop_duplicated='staging_duplicated' # defaults if these options aren't already in config
+    prop_duplicated='staging_duplicated' 
+    # defaults to these options only if aren't already specified in config
 ):
     """
 
@@ -502,7 +531,7 @@ def deduplicate_by_footprint(
         approach changed from returning a dictionary to returning a labeled GDF.
     """
 
-    logger.info(f"Executing deduplicate_by_footprint()")
+    logger.info(f"Executing deduplicate_by_footprint() for {gdf}")
 
     gdf = gdf.copy()
 
@@ -515,7 +544,6 @@ def deduplicate_by_footprint(
 
     # subset the gdf to just polys that were identified as dups because
     # they fell outside the footprint, earlier in the staging step
-    # NEED TO CHANGE THIS TO NOT BE HARD CODED
     known_dups = gdf[gdf[prop_duplicated] == True]
     logger.info(f"Length of known_dups is {len(known_dups)}.")
 
@@ -644,7 +672,8 @@ def deduplicate_by_footprint(
 
     #if return_intersections:
     #    to_return['intersections'] = pd.concat(intersections, ignore_index=True)
-    # need to figure out replacement for this because moving forward without dict 
+    # need to re-integrate this optional step later, 
+    # not currently available since removing dict step during cliping to FP
 
     if prop_duplicated in to_return.columns:
         if True in to_return[prop_duplicated].values:
@@ -659,22 +688,22 @@ def deduplicate_by_footprint(
     return to_return
 
 
-def plot_duplicates(deduplicate_output, split_by):
-    """
-    Plot the output of deduplication (useful for testing & choosing thresholds)
-    """
-    do = deduplicate_output
-    ax = do['to_keep'].plot(column=split_by, cmap='Dark2', alpha=0.6)
-    do['to_remove'].plot(
-        ax=ax,
-        facecolor='none',
-        edgecolor='k',
-        alpha=0.6,
-        linewidth=0.5)
-    do['intersections'].plot(
-        ax=ax,
-        facecolor='none',
-        edgecolor='red',
-        alpha=0.6,
-        linewidth=0.5)
-    return ax
+# def plot_duplicates(deduplicate_output, split_by):
+#     """
+#     Plot the output of deduplication (useful for testing & choosing thresholds)
+#     """
+#     do = deduplicate_output
+#     ax = do['to_keep'].plot(column=split_by, cmap='Dark2', alpha=0.6)
+#     do['to_remove'].plot(
+#         ax=ax,
+#         facecolor='none',
+#         edgecolor='k',
+#         alpha=0.6,
+#         linewidth=0.5)
+#     do['intersections'].plot(
+#         ax=ax,
+#         facecolor='none',
+#         edgecolor='red',
+#         alpha=0.6,
+#         linewidth=0.5)
+#     return ax
