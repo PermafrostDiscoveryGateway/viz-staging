@@ -74,11 +74,6 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
     # define the boundary as the footprint gdf's geometry column
     boundary = boundary.copy().filter(['geometry'])
 
-    # set the only row in the column to True
-    # there is only 1 row cause the boundary is only 1 geometry
-    # did Robyn mean to assign true to only this one row??
-    # cause later on, seems like there are NaN values for every row
-    # in this col when we sjoin? Cause joining a gdf of 1 row to a gdf with many rows
     boundary[prop_in_fp_temp] = True
     # use sjoin to determine if the polygons are within the footprint
     # then drop the column called `index_right`
@@ -86,7 +81,7 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
              .drop(['index_right'], axis=1)
 
     # create a gdf called `within` that contains only the gdf rows where the
-    # values in prop_in_fp_temp are not null (are within the FP)
+    # values in prop_in_fp_temp are not null (are within the footprint)
     within = gdf[gdf[prop_in_fp_temp].notnull()]
     # drop the column from `within` object that's used 
     # to identify polys that fall outside the footprint
@@ -94,7 +89,7 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
     logging.info(f" `within` is: {within}.\nLength of `within` is {len(within)}.")
 
     # create a gdf called `outside` that contains only the gdf rows where the
-    # values in prop_in_fp_temp are null (are not within the FP)
+    # values in prop_in_fp_temp are null (are not within the footprint)
     outside = gdf[~gdf[prop_in_fp_temp].notnull()]
     outside = outside.drop([prop_in_fp_temp], axis=1)
     logging.info(f" `outside` is: {outside}.\nLength of `outside` is {len(outside)}.")
@@ -513,11 +508,11 @@ def deduplicate_by_footprint(
     return_intersections : bool, optional
         If true, the polygons that represent the intersections between
         footprints will be returned. Default is False. Not currently available
-        in this version of the function. It is a relic of the old deduplication
-        approach that is to be integrated again in the future.
+        in this release 0.1.0. return_intersections is to be integrated again 
+        in future releases.
     prop_duplicated : str, optional
-        Defaults to "staging_duplicated". The column name / property to use to flag
-        duplicates when label is True.
+        Defaults to "staging_duplicated". The column name / property to use to 
+        flag duplicates.
 
     Returns
     -------
@@ -529,6 +524,7 @@ def deduplicate_by_footprint(
         `intersections` represents the polygon area where the footprints overlap. 
         It has not been integrated into the function again since the deduplication 
         approach changed from returning a dictionary to returning a labeled GDF.
+        This will be integrated again in releases after 0.1.0.
     """
 
     logger.info(f"Executing deduplicate_by_footprint() for {gdf}")

@@ -125,7 +125,7 @@ class ConfigManager():
         - Tiling & rasterization options.
             - tms_id : str
                 The ID of the TMS to use. Must much a TMS supported by the
-                morecantile library. Defaults to 'WorldCRS84Quad'.
+                morecantile library. Defaults to 'WGS1984Quad'.
             - tile_path_structure : list of int
                 A list of strings that represent the directory structure of
                 last segment of the path that uses the tms (TileMatrixSet),
@@ -202,7 +202,9 @@ class ConfigManager():
                         format accepted by the coloraide library (see:
                         https://facelessuser.github.io/coloraide/color/), or
                         the name of a colormap from the colormaps library (see:
-                        https://pratiman-91.github.io/colormaps).
+                        https://pratiman-91.github.io/colormaps). Colors with 
+                        transparency hex codes are accepted (see:
+                        https://gist.github.com/lopspower/03fb1cc0ac9f32ef38f4)
                     - nodata_val: int or float or None or np.nan
                         The value of pixels to interpret as no data or missing
                         data. Defaults to None.
@@ -233,20 +235,24 @@ class ConfigManager():
                     Options are 'staging', 'raster', '3dtiles', or None to skip
                     deduplication. If set to 'staging', then duplicates will
                     also be removed in raster and 3dtiles.
-                - deduplicate_method : 'neighbor', 'footprints', or None
+                - deduplicate_method : 'footprints', 'neighbor', or None
                     The method to use for deduplication. Options are
                     'neighbor', 'footprints', or None. If None, then no
-                    deduplication will be performed. If 'neighbor', then the
-                    input data will be deduplicated by removing nearby or
-                    overlapping polygons, as determined by the
-                    'deduplicate_centroid_tolerance' and
-                    'deduplicate_overlap_tolerance' options. If 'footprints',
+                    deduplication will be performed. If 'footprints',
                     then the input data will be deduplicated by removing
                     polygons that are contained within sections of overlapping
                     file footprints. This method requires footprint vector
                     files that have the same name as the input vector files,
                     stored in a directory specified by the 'dir_footprints'
-                    option.
+                    option. If 'neighbor', then the input data will be 
+                    deduplicated by removing nearby or overlapping polygons, 
+                    as determined by the 'deduplicate_centroid_tolerance' and
+                    'deduplicate_overlap_tolerance' options. Note that with 
+                    release 0.1.0, the 'neighbor' method has been not been
+                    thoroughly tested. Only the 'footprints' method has been 
+                    thoroughly tested and should be applied to input data, 
+                    as this release is tailored to a dataset that requires 
+                    this deduplication method.
                 - deduplicate_keep_rules : list of tuple: []
                     Required for both deduplication methods. Rules that define
                     which of the polygons to keep when two or more are
@@ -273,7 +279,9 @@ class ConfigManager():
                     the intersecting polygons to be considered a duplicate. If
                     False, then the overlap_tolerance proportion must be True
                     for only one of the intersecting polygons to be considered
-                    a duplicate. Default is True.
+                    a duplicate. Default is True. Note that with release 0.1.0, 
+                    the 'neighbor' method has been not been thoroughly tested 
+                    and should not be applied to input data.
                 - deduplicate_centroid_tolerance : float, optional
                     For the 'neighbor' deduplication method only. The maximum
                     distance between the centroids of two polygons to be
@@ -291,11 +299,14 @@ class ConfigManager():
                     before calculating the distance between them.
                     centroid_tolerance will use the units of this CRS. Set to
                     None to skip the re-projection and use the CRS of the
-                    GeoDataFrame.
+                    GeoDataFrame. Note that with release 0.1.0, 
+                    the 'neighbor' method has been not been thoroughly tested 
+                    and should not be applied to input data.
                 - deduplicate_clip_to_footprint : bool, optional
                     For the 'footprints' deduplication method only. If True,
                     then polygons that fall outside the bounds of the
-                    associated footprint will be removed. Default is False.
+                    associated footprint will be removed. Default is True for
+                    release version 0.1.0, but will be false for future releases.
                 - deduplicate_clip_method: str, optional
                     For the 'footprints' deduplication method only, when
                     deduplicate_clip_to_footprint is True. The method to use to
@@ -306,7 +317,7 @@ class ConfigManager():
                     'intersects', 'overlaps', 'touches', 'within' (any option
                     listed by
                     geopandas.GeoDataFrame.sindex.valid_query_predicates).
-                    Defaults to 'within'.
+                    Defaults to 'intersects'.
 
         Example config:
         ---------------
@@ -381,7 +392,7 @@ class ConfigManager():
         # Staging options
         'simplify_tolerance': 0.0001,
         # Tiling & rasterization options
-        'tms_id': 'WorldCRS84Quad',
+        'tms_id': 'WGS1984Quad',
         'tile_path_structure': ('style', 'tms', 'z', 'x', 'y'),
         'z_range': (0, 13),
         'tile_size': (256, 256),
@@ -417,7 +428,7 @@ class ConfigManager():
         'deduplicate_overlap_both': True,
         'deduplicate_centroid_tolerance': None,
         'deduplicate_distance_crs': 'EPSG:3857',
-        #'deduplicate_clip_to_footprint': True, # likely need to un-comment this out bc this is a default value but we also specify it in config for IWP so wont error this time, but if user doesnt then it will error
+        'deduplicate_clip_to_footprint': True, 
         'deduplicate_clip_method': 'intersects'
     }
 
@@ -1149,7 +1160,7 @@ class ConfigManager():
             Returns
             -------
             dict
-                A dictionairy containing the configuration for shape,
+                A dictionary containing the configuration for shape,
                 centroid_properties, and stats for Raster.from_vector method.
         """
 
@@ -1185,7 +1196,7 @@ class ConfigManager():
                 A dict containing the configuration for the Tile Path Manager
                 class. Example:
                     {
-                        'tms_id: 'WorldCRS84Quad',
+                        'tms_id: 'WGS1984Quad',
                         'path_structure': ['style', 'tms', 'z', 'x', 'y'],
                         'base_dirs': {
                             'geotiff': {
@@ -1312,6 +1323,9 @@ class ConfigManager():
         """
         method = self.get('deduplicate_method')
         if(method == 'neighbor'):
+            logger.warning(f"Deduplication method 'neighbors' has not been"
+                           f"tested for release 0.1.0. Please use deduplication"
+                           f"method 'footprints' or None for this release.")
             return deduplicate_neighbors
         if(method == 'footprints'):
             return deduplicate_by_footprint
