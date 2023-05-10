@@ -12,7 +12,16 @@ from filelock import FileLock
 from . import ConfigManager, TilePathManager, TMSGrid
 from .Deduplicator import clip_gdf
 
-logger = logging.getLogger(__name__)
+# configure logger
+logger = logging.getLogger("logger")
+# prevent logging statements from being printed to terminal
+logger.propagate = False
+# set up new handler
+handler = logging.FileHandler("/tmp/log.log")
+formatter = logging.Formatter(logging.BASIC_FORMAT)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 
 class TileStager():
@@ -372,10 +381,6 @@ class TileStager():
         gdf = self.assign_tile(gdf)
         centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
         gdf[props['centroid_within_tile']] = centroid_only
-
-        logger.info(f"Columns present in the GDF are: {gdf.columns}."
-                    f" Unique values in the `duplicated` column are: "
-                    f"{gdf['staging_duplicated'].unique()}.")
 
         logger.info(
             f'Added properties for {num_polygons} vectors in '

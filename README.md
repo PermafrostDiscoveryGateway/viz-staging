@@ -76,3 +76,4 @@ The staging process will also output a summary CSV file with one row for each ti
 - The input data does not contain `NaN` values or infinite values, or if the data does contain one of these, then the value is known. Failing to specify this value in the configuration cause issues later in the visualization pipeline.
 - For release 0.1.0, the deduplication method `neighbors` has not been thoroughly tested. The deduplication method should be `None` or `footprints`.
 - If the deduplication method specified in the configuration is `footprints`, the footprint file(s) are provided with a structure that follows the [docs](https://github.com/PermafrostDiscoveryGateway/viz-staging/blob/main/docs/footprints.md).
+- In order for logging to work properly, the home directory of the script using this package has a directory called `/tmp` so the `log.log` file can populate there.
