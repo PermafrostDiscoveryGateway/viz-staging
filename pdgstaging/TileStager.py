@@ -1,4 +1,5 @@
 import logging
+from . import logging_config
 import os
 import uuid
 import warnings
@@ -10,8 +11,9 @@ import pandas as pd
 from filelock import FileLock
 
 from . import ConfigManager, TilePathManager, TMSGrid
+from .Deduplicator import clip_gdf
 
-logger = logging.getLogger(__name__)
+logger = logging_config.logger
 
 
 class TileStager():
@@ -122,17 +124,94 @@ class TileStager():
                 The path to the vector file to process and create tiles for.
         """
         gdf = self.get_data(path)
+        logger.info(f"Staging file {path}")
         # Remove any geometries that are not polygons
         gdf = gdf[gdf.geometry.type == 'Polygon']
+
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
+            # clip to footprint before CRS of IWP data is transformed
+            # to EPSG:4326
+            gdf = self.clip_to_footprint(gdf, path)
             gdf = self.set_crs(gdf)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
             self.save_tiles(gdf)
         else:
             logger.warning(f'No features in {path}')
+    
+    def clip_to_footprint(self, gdf, path):
+        """
+            If the config is set to clip_to_footprint=True,
+            and config is set to deduplicate at any step in the workflow,
+            find the footprint file associated with the gdf, 
+            determine which polygons fall outside the footprint,
+            and label the polygons as True or False in a new column
+            that defualts to 'staging_duplicated'.
 
+            Parameters
+            ----------
+            gdf : GeoDataFrame
+                The GDF undergoing staging.
+            
+            path: string
+                Path to the input file. This is used to retrieve the footprint.
+
+            Returns
+            -------
+            The GeodataFrame with polygons that fall outside
+            the footprint labeled as duplicates.
+
+        """
+
+        # check if the config is set to clip to footprint
+        clip_to_footprint = self.config.get('deduplicate_clip_to_footprint')
+        logger.info(f"clip_to_footprint is {clip_to_footprint}")
+        # check if the config is set to label duplicates
+        dedup = self.config.get('deduplicate_method')
+        # if the config is set to do so, clip to footprint
+        if clip_to_footprint == True and dedup is not None:
+            logger.info(f' Starting clipping_to_footprint() for file {path}.')
+            # pull in footprint as a gdf called fp
+            fp_path = self.config.footprint_path_from_input(path, check_exists=True)
+            fp = self.get_data(fp_path)
+            logger.info(f' Checking CRSs of polygons and footprint.')
+
+            iwp_crs = gdf.crs
+            fp_crs = fp.crs
+
+            if iwp_crs == fp_crs:
+                logger.info(f" CRSs match. They are both {iwp_crs}.")
+            else:
+                logger.info(f" CRSs do not match.\n IWP's CRS is {iwp_crs}."
+                            f" Footprint's CRS is {fp_crs}.")
+                # transform the footprint to the CRS of the polygon data
+                fp.to_crs(iwp_crs, inplace = True)
+                # check again
+                fp_crs_transformed = fp.crs
+                if iwp_crs == fp_crs_transformed:
+                    logger.info("Footprint CRS has been transformed to CRS of polygons.")
+                else:
+                    logger.error("Failed to transform footprint CRS to CRS of polygons.")
+                    return
+
+            # determine if polygons fall within or outside the footprint
+            # first retrieve the name of the column we will use to label duplicates
+            prop_duplicated = self.config.polygon_prop('duplicated')
+            gdf_with_labels = clip_gdf(
+                gdf = gdf.copy(), # the gdf to clip
+                boundary = fp.copy(), # the footprint
+                method = 'intersects',
+                prop_duplicated = prop_duplicated
+            )
+
+            return gdf_with_labels
+        else:
+            logger.info(f" Either clip_to_footprint was set to False, or config"
+                        f" was not set to deduplicate at any step. Returning original GDF"
+                        f" without clipping to footprint.")
+            return gdf
+    
     def get_data(self, input_path=None):
         """
             Read a vector file as a GeoDataFrame
@@ -185,7 +264,7 @@ class TileStager():
             Parameters
             ----------
             gdf : GeoDataFrame
-                The GeoDataFrame to set the CRS of
+                The GeoDataFrame to set the CRS of the Tile Matrix Set
 
             Returns
             -------
@@ -196,14 +275,23 @@ class TileStager():
         start_time = datetime.now()
 
         input_crs = self.config.get('input_crs')
+        # assign the CRS of the TMS to `output_crs`
         output_crs = self.tiles.crs
 
-        # Set the input CRS if it hasn't been set
+        # log the CRS that already exists in the input data
+        crs_in_input = gdf.crs
+
+        if crs_in_input is not None:
+            logger.info(f"CRS of input data is {crs_in_input}.\nIf input_crs is set in config," 
+                        f" setting CRS to that.")
+        else: 
+            logger.info(f"No CRS set in input data. Setting to input_crs specified in config.")
+
         if input_crs:
             gdf.set_crs(
                 input_crs, inplace=True, allow_override=True
             )
-        # Re-project the geoms
+        # Re-project the geoms to the CRS of the TMS
         if output_crs:
             gdf.to_crs(output_crs, inplace=True)
 
@@ -286,13 +374,6 @@ class TileStager():
         gdf = self.assign_tile(gdf)
         centroid_only = gdf[props['tile']] == gdf[props['centroid_tile']]
         gdf[props['centroid_within_tile']] = centroid_only
-
-        # Add the column to flag duplicate polygons. This will be set to True
-        # later if duplicates are found.
-        dedup_method = self.config.get_deduplication_method()
-        if dedup_method is not None:
-            # Mark all the polygons as not duplicated
-            gdf[self.config.polygon_prop('duplicated')] = False
 
         logger.info(
             f'Added properties for {num_polygons} vectors in '
@@ -396,49 +477,160 @@ class TileStager():
             tile_strings = data[self.props['centroid_tile']].astype('str')
             data[self.props['centroid_tile']] = tile_strings
 
-            # Open the file in write mode by default
-            mode = 'w'
-
+            dedup_method = self.config.get_deduplication_method()
             if os.path.isfile(tile_path):
-                # If the file exists and config is set to deduplicate, then
-                # open the file, append the new data, and identify duplicates.
-                # Remove the data if the config is set to remove duplicates
-                # during staging. Overwrite existing file.
-                dedup_method = self.config.get_deduplication_method()
                 if dedup_method is not None:
+                    # If the file exists and config is set to deduplicate
+                    # at any step, then open the file, append the new data, 
+                    # and identify duplicates where footprints overlap. 
+                    # (duplicates where polygons fall outside
+                    # the footprint were already labeled earlier).
+                    # Then remove all the duplicated data if the config is 
+                    # set to remove duplicates during staging.
+                    logger.info(f"Tile exists and dedup is set to occur at some step,"
+                                f" so executing `combine_and_deduplicate()`")
                     data = self.combine_and_deduplicate(data, tile_path)
-                # If the file exists and config is not set to deduplicate, then
-                # just append the new data to the existing file.
+
+                    mode = 'w'
+                    # Overwrite existing file.
+                    self.save_new_tile(data = data,
+                                        tile_path = tile_path,
+                                        mode = mode,
+                                        start_time = start_time,
+                                        lock = lock)
                 else:
+                    # If the file exists and config is not set to deduplicate
+                    # at any step, simply append the polygons to the existing file.
+                    # Neither file has been clipped to footprint, and we will not label
+                    # the polygons that fall within the footprints' intersection
+                    # as duplicates.
+                    logger.info(f"Tile exists but dedup is not set to occur, so just "
+                                f"appending the polygons.")
+                    
+                    # Append to existing tile
                     mode = 'a'
+                    self.save_new_tile(data = data,
+                                        tile_path = tile_path,
+                                        mode = mode,
+                                        start_time = start_time,
+                                        lock = lock)
+            else:
+                if dedup_method is not None:
+                    if self.config.deduplicate_at('staging'):
+                        # If the file does not yet exist and the config is set to deduplicate
+                        # at staging, just remove the polygons that were already labeled as 
+                        # duplicates because they fell outside the footprint,
+                        # and save the tile as a new tile.
 
-            try:
-                # Ignore the FutureWarning raised from geopandas issue 2347
-                with warnings.catch_warnings():
-                    warnings.simplefilter('ignore', FutureWarning)
-                    data.to_file(tile_path, mode=mode)
+                        # dedup_start_time = datetime.now()
+                        # logger.info(f'Starting deduplication in tile {tile_path} with {len(gdf)}'
+                        #             'polygons.')
+                        # dedup_config = self.config.get_deduplication_config(gdf)
+                        # gdf = dedup_method(gdf, **dedup_config)
+                        logger.info(f"Tile does not yet exist and config is set to deduplicate "
+                                    f"at staging, so removing polygons that fell outside the footprint.")
+                        # retreive the name of the duplicated column from config
+                        prop_duplicated = self.config.polygon_prop('duplicated')
+                        if prop_duplicated in data.columns:
+                            data = data[~data[prop_duplicated]]
 
-                # convert each tile from string format to morecantile format 
-                # so it can be added to summary
-                # first create series of tiles in str format
-                tiles_str = data[self.props['tile']].copy()
+                        mode = 'w'
+                        self.save_new_tile(data = data,
+                                           tile_path = tile_path,
+                                           mode = mode,
+                                           start_time = start_time,
+                                           lock = lock)
+                    else:
+                        # If the file does not yet exist and the config is set to deduplicate
+                        # at a step after staging, just save as a new tile. It already has
+                        # polys labeled as duplicates if they fall outside the footprint,
+                        # and the next time a poly in this tile is produced, it will be checked 
+                        # for duplicates where the two footprints overlap.
+                        logger.info(f"Tile does not yet exist and config is set to deduplicate at a step "
+                                    f"after staging, so just saving the new tile. Duplicates from `clip_gdf`"
+                                    f"  were identified.")
+                        
+                        mode = 'w'
+                        self.save_new_tile(data = data,
+                                           tile_path = tile_path,
+                                           mode = mode,
+                                           start_time = start_time,
+                                           lock = lock)
+                else:
+                    # If the tile does not yet exist and the config is not set to deduplicate
+                    # at any step, just save as a new tile. No duplicates were labeled earlier
+                    # either, because we did not check if any fell outside the footprint.
+                    logger.info(f"Tile does not yet exist and config is not set to deduplicate, so just "
+                                f"saving the new tile. Duplicates from `clip_gdf` were not identified.")
+                    
+                    mode = 'w'
+                    self.save_new_tile(data = data,
+                                       tile_path = tile_path,
+                                       mode = mode,
+                                       start_time = start_time,
+                                       lock = lock)
 
-                tiles_morecantile = [self.tiles.tile_from_str(tile) for tile in tiles_str]
+    def save_new_tile(self, data, tile_path, mode, start_time, lock):
+        """
+            Save data as a new tile, if the tile does not already exist.
+            Adds a row to staging_summary.csv.
 
-                # Record what was saved
-                data[self.props['tile']] = tiles_morecantile
-                self.summarize(data)
-            finally:
-                # Track the end time, the total time, and the number of vectors
-                logger.info(
-                    f'Saved {tile_path} in {datetime.now() - start_time}'
-                )
-                self.__release_file(lock)
+            Parameters
+            ----------
+            data: GeoDataframe
+                Subset of the original input GDF, which was split by self.props['tile']
+                at the start of save_tiles().
+            
+            tile_path: str
+                Path to tile file, considering the standardized directory
+                structure set in the Path Manager.
+
+            mode: str
+                Specifies the way in which a file should be opened. "w" overwrites the
+                contents of the file if it already exists, and creates a new file if it 
+                doesn't exist. "a" appends data to the end of the file if it already exists,
+                and creates a new file if it doesn't exist. 
+
+            start_time: datetime
+                The datetime when save_tiles() began (after the file was locked).
+
+            lock: lock file object instance
+                Ensures that only 1 process can access the file while it is being written.
+
+            Returns
+            -------
+            Nothing. Saves new tile in `staged` directory.
+
+        """
+        try: 
+            # Ignore the FutureWarning raised from geopandas issue 2347
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', FutureWarning)
+                data.to_file(tile_path, mode=mode)
+
+            # convert each tile from string format to morecantile format 
+            # so it can be added to summary
+            # first create series of tiles in str format
+            tiles_str = data[self.props['tile']].copy()
+
+            tiles_morecantile = [self.tiles.tile_from_str(tile) for tile in tiles_str]
+
+            # Record what was saved
+            data[self.props['tile']] = tiles_morecantile
+            self.summarize(data)
+        finally:
+            # Track the end time, the total time, and the number of vectors
+            logger.info(
+                f'Saved {tile_path} in {datetime.now() - start_time}'
+            )
+            self.__release_file(lock)
 
     def combine_and_deduplicate(self, gdf, tile_path):
         """
             Combine existing data for a tile with the new data in a
-            GeoDataFrame, and deduplicate the result.
+            GeoDataFrame, label polygons as duplicates using one of 
+            the deduplication methods, and remove tiles labeled as 
+            duplicates if the config is set to do so at staging.
 
             Parameters
             ----------
@@ -450,7 +642,8 @@ class TileStager():
             Returns
             -------
             gdf : GeoDataFrame
-                The combined and deduplicated GeoDataFrame
+                The combined GeoDataFrame without duplicates labeled or with 
+                deduplicates labeled, depending on how the config is set.
         """
 
         dedup_start_time = datetime.now()
@@ -464,17 +657,22 @@ class TileStager():
         to_concat = [gdf, existing_gdf]
         num_unique_crs = len({g.crs for g in to_concat})
         if num_unique_crs != 1:
-            existing_gdf.to_crs(gdf.crs, inplace=True)
+            # if the CRS's don't match, transform the new data to the
+            # CRS of the existing data
+            # note: unlikely this is executed because both tiles have already
+            # been input into set_crs()
+            gdf.to_crs(existing_gdf.crs, inplace=True)
 
         gdf = pd.concat(to_concat, ignore_index=True)
+        gdf.reset_index(drop = True, inplace = True)
         dedup_config = self.config.get_deduplication_config(gdf)
-        if dedup_method is None:
-            return gdf
 
         logger.info(
             f'Starting deduplication in tile {tile_path} with {len(gdf)} '
             'polygons.'
         )
+
+        # label duplicates depending on which deduplication type is set in config
         gdf = dedup_method(gdf, **dedup_config)
 
         # drop duplicated polygons, if config is set to deduplicate here
@@ -602,7 +800,7 @@ class TileStager():
                 matching_footprints.append(footprint)
         num_missing = len(missing_footprints)
         num_found = len(matching_footprints)
-        logging.info(f'Found {num_found} matching footprints. '
+        logger.info(f'Found {num_found} matching footprints. '
                      f'{num_missing} missing.')
         return missing_footprints
 
