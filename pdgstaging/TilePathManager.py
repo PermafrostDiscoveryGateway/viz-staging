@@ -18,7 +18,7 @@ class TilePathManager():
     """
 
     def __init__(self,
-                 tms_id='WorldCRS84Quad',
+                 tms_id='WGS1984Quad',
                  path_structure=('style', 'tms', 'z', 'x', 'y'),
                  base_dirs={}
                  ):
@@ -29,7 +29,7 @@ class TilePathManager():
             ----------
             tms_id : str, optional
                 The Tile Matrix Set ID. Must be one of the IDs used by the
-                morecantile library. Defaults to 'WorldCRS84Quad'.
+                morecantile library. Defaults to 'WGS1984Quad'.
             path_structure : list or tuple, optional
                 A list of strings that represent the directory structure of
                 last segment of the path that uses the tms (TileMatrixSet),

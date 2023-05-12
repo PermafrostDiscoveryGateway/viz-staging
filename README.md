@@ -31,13 +31,14 @@ stager.stage('path/to/input/file.shp')
 
 ## Vector file staging for the PDG tiling pipeline
 
-This repository contains code that prepares vector data (e.g. shapefiles) for subsequent steps in the [PDG](https://permafrost.arcticdata.io/) tiling pipeline (such as [viz-3dtiles](https://github.com/PermafrostDiscoveryGateway/viz-3dtiles) and [viz-raster](https://github.com/PermafrostDiscoveryGateway/viz-raster)). The staging step creates output vector files that conform to a specified [OGC Two Dimensional Tile Matrix Set](http://docs.opengeospatial.org/is/17-083r2/17-083r2.html) ("TMS"). Specifically, for each input file, the staging process:
+This repository contains code that prepares vector data (e.g. shapefiles, geopackages) for subsequent steps in the [PDG](https://permafrost.arcticdata.io/) tiling pipeline (such as [viz-3dtiles](https://github.com/PermafrostDiscoveryGateway/viz-3dtiles) and [viz-raster](https://github.com/PermafrostDiscoveryGateway/viz-raster)). The staging step creates output vector files that conform to a specified [OGC Two Dimensional Tile Matrix Set](http://docs.opengeospatial.org/is/17-083r2/17-083r2.html) ("TMS"). Specifically, for each input file, the staging process:
 
 1. Simplifies polygons and re-projects them to the Coordinate Reference System ("CRS") used by the desired TMS.
 2. Assigns area, centroid, and other properties to each polygon.
-3. Saves polygons to one file for each tile in the specified level of the TMS.
+3. Identifies duplicate polygons in the tiles. 
+4. Saves polygons to one file for each tile in the specified level of the TMS.
 
-Polygons are assigned to a tile file if the polygon is within the tile or if it intersects with the bounding box of the tile (i.e. if it is at least *partially* within that tile). This means that polygons that fall within two or more tiles will be duplicated in the output. (This allows subsequent rasterization steps to measure the area of polygons that are only partially within the tile - otherwise some area is lost.)
+Polygons are assigned to a tile file if the polygon is within the tile or if it intersects with the bounding box of the tile (i.e. if it is at least *partially* within that tile). This means that polygons that fall within two or more tiles will be duplicated in the output. (This allows subsequent rasterization steps to measure the area of polygons that are only partially within the tile - otherwise some area is lost). The duplicated polygons are labeled as such so they can be removed during staging or a later step in the PDG visualization pipeline. The step at which these polygons are removed is determined by the configuration file.  
 
 However, polygon-tile relationships are also identified using the centroid of each polygon: The `centroid_tile` property assigned to polygons identifies the tile within which the polygon's centroid falls. (In the rare event that a polygon's centroid falls exactly on a tile boundary, the polygon will be added to the southern/eastern tile.)
 
@@ -55,6 +56,7 @@ After being run through this staging process, each polygon will be assigned the 
 - **staging_filename** (string) - The path to the file from which this polygon originated
 - **staging_identifier** (string) - A unique identifier for the polygon
 - **staging_centroid_within_tile** (boolean) - True when the `centroid_tile` property matches the `tile`, i.e. when the centroid of the polygon is within the same tile as the file it is saved in
+- **staging_duplicated** (boolean) - True when the polygon has been identified as a duplicate based on the deduplication method specified in the configuration
 
 ## Summary fields
 
@@ -71,3 +73,8 @@ The staging process will also output a summary CSV file with one row for each ti
 
 - It is assumed that incoming vector data comprises only valid polygons. **Any non-polygon data is removed**, including multi-polygons, points, lines, or other geometries.
 - It's also assumed that each incoming vector file is staged only once. If a file passes through the staging step twice, then all polygons from that file will be duplicated in the output (but with a different identifier). This is due to the fact that when a tile file already exists, additional polygons that belong to this tile will be appended to the file.
+- The input data does not contain `NaN` values or infinite values, or if the data does contain one of these, then the value is known. Failing to specify this value in the configuration cause issues later in the visualization pipeline.
+- For release 0.1.0, the deduplication method `neighbors` has not been thoroughly tested. The deduplication method should be `None` or `footprints`.
+- If the deduplication method specified in the configuration is `footprints`, the footprint file(s) are provided with a structure that follows the [docs](https://github.com/PermafrostDiscoveryGateway/viz-staging/blob/main/docs/footprints.md).
+- In order for logging to work properly, the node running the script that uses this package has a `/tmp` directory so the `log.log` file can populate there.
+
