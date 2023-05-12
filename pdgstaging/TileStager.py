@@ -1,4 +1,5 @@
 import logging
+from . import logging_config
 import os
 import uuid
 import warnings
@@ -12,17 +13,18 @@ from filelock import FileLock
 from . import ConfigManager, TilePathManager, TMSGrid
 from .Deduplicator import clip_gdf
 
-# configure logger
-logger = logging.getLogger("logger")
-# prevent logging statements from being printed to terminal
-logger.propagate = False
-# set up new handler
-handler = logging.FileHandler("/tmp/log.log")
-formatter = logging.Formatter(logging.BASIC_FORMAT)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+# # configure logger
+# logger = logging.getLogger("logger")
+# # prevent logging statements from being printed to terminal
+# logger.propagate = False
+# # set up new handler
+# handler = logging.FileHandler("/tmp/log.log")
+# formatter = logging.Formatter(logging.BASIC_FORMAT)
+# handler.setFormatter(formatter)
+# logger.addHandler(handler)
+# logger.setLevel(logging.INFO)
 
+logger = logging_config.logger
 
 class TileStager():
     """
@@ -65,7 +67,7 @@ class TileStager():
 
         if(check_footprints and
            self.config.get('deduplicate_method') == 'footprints'):
-            logging.info('Checking for footprint files...')
+            logger.info('Checking for footprint files...')
             missing = self.check_footprints()
             num_missing = len(missing)
             if 0 < num_missing < 20:
@@ -132,11 +134,9 @@ class TileStager():
                 The path to the vector file to process and create tiles for.
         """
         gdf = self.get_data(path)
-        logging.info(f"Staging file {path}")
+        logger.info(f"Staging file {path}")
         # Remove any geometries that are not polygons
         gdf = gdf[gdf.geometry.type == 'Polygon']
-
-        logging.info(f"Length of gdf is {len(gdf)}")
 
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
@@ -176,10 +176,11 @@ class TileStager():
 
         # check if the config is set to clip to footprint
         clip_to_footprint = self.config.get('deduplicate_clip_to_footprint')
+        logger.info(f"clip_to_footprint is {clip_to_footprint}")
         # check if the config is set to label duplicates
         dedup = self.config.get('deduplicate_method')
         # if the config is set to do so, clip to footprint
-        if clip_to_footprint and dedup is not None:
+        if clip_to_footprint == True and dedup is not None:
             logger.info(f' Starting clipping_to_footprint() for file {path}.')
             # pull in footprint as a gdf called fp
             fp_path = self.config.footprint_path_from_input(path, check_exists=True)
@@ -217,7 +218,8 @@ class TileStager():
             return gdf_with_labels
         else:
             logger.info(f" Either clip_to_footprint was set to False, or config"
-                        f" was not set to deduplicate at any step. Returning original GDF.")
+                        f" was not set to deduplicate at any step. Returning original GDF"
+                        f" without clipping to footprint.")
             return gdf
     
     def get_data(self, input_path=None):
@@ -272,7 +274,7 @@ class TileStager():
             Parameters
             ----------
             gdf : GeoDataFrame
-                The GeoDataFrame to set the CRS of
+                The GeoDataFrame to set the CRS of the Tile Matrix Set
 
             Returns
             -------
@@ -288,6 +290,7 @@ class TileStager():
 
         # log the CRS that already exists in the input data
         crs_in_input = gdf.crs
+
         if crs_in_input is not None:
             logger.info(f"CRS of input data is {crs_in_input}.\nIf input_crs is set in config," 
                         f" setting CRS to that.")
@@ -484,9 +487,6 @@ class TileStager():
             tile_strings = data[self.props['centroid_tile']].astype('str')
             data[self.props['centroid_tile']] = tile_strings
 
-            # Open the file in write mode by default
-            mode = 'w'
-
             dedup_method = self.config.get_deduplication_method()
             if os.path.isfile(tile_path):
                 if dedup_method is not None:
@@ -501,6 +501,7 @@ class TileStager():
                                 f" so executing `combine_and_deduplicate()`")
                     data = self.combine_and_deduplicate(data, tile_path)
 
+                    mode = 'w'
                     # Overwrite existing file.
                     self.save_new_tile(data = data,
                                         tile_path = tile_path,
@@ -515,7 +516,14 @@ class TileStager():
                     # as duplicates.
                     logger.info(f"Tile exists but dedup is not set to occur, so just "
                                 f"appending the polygons.")
+                    
+                    # Append to existing tile
                     mode = 'a'
+                    self.save_new_tile(data = data,
+                                        tile_path = tile_path,
+                                        mode = mode,
+                                        start_time = start_time,
+                                        lock = lock)
             else:
                 if dedup_method is not None:
                     if self.config.deduplicate_at('staging'):
@@ -536,6 +544,7 @@ class TileStager():
                         if prop_duplicated in data.columns:
                             data = data[~data[prop_duplicated]]
 
+                        mode = 'w'
                         self.save_new_tile(data = data,
                                            tile_path = tile_path,
                                            mode = mode,
@@ -550,6 +559,8 @@ class TileStager():
                         logger.info(f"Tile does not yet exist and config is set to deduplicate at a step "
                                     f"after staging, so just saving the new tile. Duplicates from `clip_gdf`"
                                     f"  were identified.")
+                        
+                        mode = 'w'
                         self.save_new_tile(data = data,
                                            tile_path = tile_path,
                                            mode = mode,
@@ -561,6 +572,8 @@ class TileStager():
                     # either, because we did not check if any fell outside the footprint.
                     logger.info(f"Tile does not yet exist and config is not set to deduplicate, so just "
                                 f"saving the new tile. Duplicates from `clip_gdf` were not identified.")
+                    
+                    mode = 'w'
                     self.save_new_tile(data = data,
                                        tile_path = tile_path,
                                        mode = mode,
@@ -797,7 +810,7 @@ class TileStager():
                 matching_footprints.append(footprint)
         num_missing = len(missing_footprints)
         num_found = len(matching_footprints)
-        logging.info(f'Found {num_found} matching footprints. '
+        logger.info(f'Found {num_found} matching footprints. '
                      f'{num_missing} missing.')
         return missing_footprints
 

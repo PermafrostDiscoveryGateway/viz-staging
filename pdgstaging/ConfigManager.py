@@ -1,5 +1,6 @@
 import json
 import logging
+from . import logging_config
 import os
 from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
 from .TilePathManager import TilePathManager
@@ -7,16 +8,18 @@ import warnings
 from coloraide import Color
 import colormaps as cmaps
 
-# configure logger
-logger = logging.getLogger("logger")
-# prevent logging statements from being printed to terminal
-logger.propagate = False
-# set up new handler
-handler = logging.FileHandler("/tmp/log.log")
-formatter = logging.Formatter(logging.BASIC_FORMAT)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+# # configure logger
+# logger = logging.getLogger("logger")
+# # prevent logging statements from being printed to terminal
+# logger.propagate = False
+# # set up new handler
+# handler = logging.FileHandler("/tmp/log.log")
+# formatter = logging.Formatter(logging.BASIC_FORMAT)
+# handler.setFormatter(formatter)
+# logger.addHandler(handler)
+# logger.setLevel(logging.INFO)
+
+logger = logging_config.logger
 
 
 class ConfigManager():

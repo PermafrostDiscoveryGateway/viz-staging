@@ -10,19 +10,22 @@ from datetime import datetime
 import numpy as np
 from filelock import FileLock
 import logging
+from . import logging_config
 # NOTE: DO NOT IMPORT ConfigManager, TilePathManager, Grid
 # because causes config import error for rasterization step 
 
-# configure logger
-logger = logging.getLogger("logger")
-# prevent logging statements from being printed to terminal
-logger.propagate = False
-# set up new handler
-handler = logging.FileHandler("/tmp/log.log")
-formatter = logging.Formatter(logging.BASIC_FORMAT)
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+# # configure logger
+# logger = logging.getLogger("logger")
+# # prevent logging statements from being printed to terminal
+# logger.propagate = False
+# # set up new handler
+# handler = logging.FileHandler("/tmp/log.log")
+# formatter = logging.Formatter(logging.BASIC_FORMAT)
+# handler.setFormatter(formatter)
+# logger.addHandler(handler)
+# logger.setLevel(logging.INFO)
+
+logger = logging_config.logger
 
 def keep_rules_to_sort_order(keep_rules):
     """
@@ -95,13 +98,11 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
     # drop the column from `within` object that's used 
     # to identify polys that fall outside the footprint
     within = within.drop([prop_in_fp_temp], axis=1)
-    logging.info(f" `within` is: {within}.\nLength of `within` is {len(within)}.")
 
     # create a gdf called `outside` that contains only the gdf rows where the
     # values in prop_in_fp_temp are null (are not within the footprint)
     outside = gdf[~gdf[prop_in_fp_temp].notnull()]
     outside = outside.drop([prop_in_fp_temp], axis=1)
-    logging.info(f" `outside` is: {outside}.\nLength of `outside` is {len(outside)}.")
 
     outside[prop_duplicated] = True
     within[prop_duplicated] = False
@@ -109,8 +110,6 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
     # stack the gdf's
     gdf_with_labels = pd.concat([outside, within], ignore_index = True)
     gdf_with_labels.reset_index(drop = True, inplace = True)
-
-    logger.info(f"After clipping to fp, length of gdf_with_labels is {len(gdf_with_labels)}")
 
     return gdf_with_labels
 
