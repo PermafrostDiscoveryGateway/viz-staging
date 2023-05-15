@@ -249,7 +249,7 @@ class ConfigManager():
                     deduplicated by removing nearby or overlapping polygons, 
                     as determined by the 'deduplicate_centroid_tolerance' and
                     'deduplicate_overlap_tolerance' options. Note that with 
-                    release 0.1.0, the 'neighbor' method has been not been
+                    release 0.9.0, the 'neighbor' method has been not been
                     thoroughly tested. Only the 'footprints' method has been 
                     thoroughly tested and should be applied to input data, 
                     as this release is tailored to a dataset that requires 
@@ -280,7 +280,7 @@ class ConfigManager():
                     the intersecting polygons to be considered a duplicate. If
                     False, then the overlap_tolerance proportion must be True
                     for only one of the intersecting polygons to be considered
-                    a duplicate. Default is True. Note that with release 0.1.0, 
+                    a duplicate. Default is True. Note that with release 0.9.0, 
                     the 'neighbor' method has been not been thoroughly tested 
                     and should not be applied to input data.
                 - deduplicate_centroid_tolerance : float, optional
@@ -300,14 +300,14 @@ class ConfigManager():
                     before calculating the distance between them.
                     centroid_tolerance will use the units of this CRS. Set to
                     None to skip the re-projection and use the CRS of the
-                    GeoDataFrame. Note that with release 0.1.0, 
+                    GeoDataFrame. Note that with release 0.9.0, 
                     the 'neighbor' method has been not been thoroughly tested 
                     and should not be applied to input data.
                 - deduplicate_clip_to_footprint : bool, optional
                     For the 'footprints' deduplication method only. If True,
                     then polygons that fall outside the bounds of the
                     associated footprint will be removed. Default is True for
-                    release version 0.1.0, but will be false for future releases.
+                    release version 0.9.0, but will be false for future releases.
                 - deduplicate_clip_method: str, optional
                     For the 'footprints' deduplication method only, when
                     deduplicate_clip_to_footprint is True. The method to use to
@@ -1325,7 +1325,7 @@ class ConfigManager():
         method = self.get('deduplicate_method')
         if(method == 'neighbor'):
             logger.warning(f"Deduplication method 'neighbors' has not been"
-                           f"tested for release 0.1.0. Please use deduplication"
+                           f"tested for release 0.9.0. Please use deduplication"
                            f"method 'footprints' or None for this release.")
             return deduplicate_neighbors
         if(method == 'footprints'):

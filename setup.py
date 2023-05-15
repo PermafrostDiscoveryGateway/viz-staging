@@ -7,7 +7,7 @@ setup(
     author='Robyn Thiessen-Bock',
     author_email='thiessenbock@nceas.ucsb.edu',
     name='pdgstaging',
-    version='0.1.0',
+    version='0.9.0',
     description='PDG Visualization staging pipeline',
     long_description=long_description,
     long_description_content_type='text/markdown',
