@@ -506,7 +506,7 @@ def deduplicate_by_footprint(
     return_intersections : bool, optional
         If true, the polygons that represent the intersections between
         footprints will be returned. Default is False. Not currently available
-        in this release 0.1.0. return_intersections is to be integrated again 
+        in this release 0.9.0. return_intersections is to be integrated again 
         in future releases.
     prop_duplicated : str, optional
         Defaults to "staging_duplicated". The column name / property to use to 
@@ -522,7 +522,7 @@ def deduplicate_by_footprint(
         `intersections` represents the polygon area where the footprints overlap. 
         It has not been integrated into the function again since the deduplication 
         approach changed from returning a dictionary to returning a labeled GDF.
-        This will be integrated again in releases after 0.1.0.
+        This will be integrated again in releases after 0.9.0.
     """
 
     logger.info(f"Executing deduplicate_by_footprint() for {gdf}")
