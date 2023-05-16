@@ -4,8 +4,8 @@ with open('README.md', 'r') as fh:
     long_description = fh.read()
 
 setup(
-    author='Robyn Thiessen-Bock',
-    author_email='thiessenbock@nceas.ucsb.edu',
+    author='Robyn Thiessen-Bock, Juliet Cohen',
+    author_email='thiessenbock@nceas.ucsb.edu, jcohen@nceas.ucsb.edu',
     name='pdgstaging',
     version='0.9.0',
     description='PDG Visualization staging pipeline',
