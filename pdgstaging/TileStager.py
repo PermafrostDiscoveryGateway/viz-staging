@@ -1,4 +1,5 @@
 import logging
+from . import logging_config
 import os
 import uuid
 import warnings
@@ -11,7 +12,7 @@ from filelock import FileLock
 
 from . import ConfigManager, TilePathManager, TMSGrid
 
-logger = logging.getLogger(__name__)
+logger = logging_config.logger
 
 
 class TileStager():

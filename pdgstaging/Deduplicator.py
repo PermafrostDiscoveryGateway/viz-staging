@@ -6,6 +6,15 @@ import itertools
 import warnings
 
 
+import os
+from datetime import datetime
+import numpy as np
+from filelock import FileLock
+import logging
+from . import logging_config
+
+logger = logging_config.logger
+
 def keep_rules_to_sort_order(keep_rules):
     """
     Convert a list of keep rules to the format required for the pandas
@@ -209,6 +218,8 @@ def deduplicate_neighbors(
         polygons flagged as duplicates. Duplicates are marked as True in the
         prop_duplicated column.
     """
+
+    logger.info('Deduplicating with neighbor method.')
 
     if split_by is None:
         raise ValueError('An overlap property must be specified for '
