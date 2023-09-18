@@ -122,7 +122,7 @@ def deduplicate_neighbors(
     """
 
     Identify duplicated polygons from two sources in a single GeoDataFrame, even
-    when geometries are not identical. Remove the duplicated polygons if label=False.
+    when geometries are not identical.
 
     Two polygons are considered duplicates of one another when they:
         1. have a different value for a specific property (e.g. 'source_file'),
@@ -296,33 +296,9 @@ def deduplicate_neighbors(
     if len(gdfs) < 2:
         to_return['to_keep'] = gdf_original.drop(columns=[prop_id])
 
-        # label duplicates with boolean column
-        not_duplicates = to_return['to_keep']
-        duplicates = to_return['to_remove'] # None
-
-        if not_duplicates is not None:
-            if prop_duplicated in not_duplicates.columns:
-                # if the gdf of polygons to keep exists and
-                # contains the column `prop_duplicated`
-                # set values to True if already set to True
-                # if the value is not already True, set it to False
-                not_duplicates[prop_duplicated] = \
-                    not_duplicates[prop_duplicated].apply(
-                        lambda x: True if x is True else False)
-            else:
-                # if the column `prop_duplicated` is not already present, 
-                # create it and set all values to False
-                not_duplicates[prop_duplicated] = False
-
-        # if duplicates is not None:
-        #     # if duplicates were found
-        #     duplicates[prop_duplicated] = True
-        #     # combine both dataframes if 
-        #     to_return = pd.concat([not_duplicates, duplicates], ignore_index = True)
-        #     to_return.reset_index(drop = True, inplace = True)
-        # else: 
-
-        return not_duplicates
+        to_return = label_duplicates(to_return, prop_duplicated)
+        # end the deduplicate_neighbors() here, no need to continue
+        return to_return
 
     # Set will hold all of the polygons IDs that we will remove
     ids_to_remove = set()
@@ -423,10 +399,11 @@ def deduplicate_neighbors(
             by=sort_props,
             ascending=sort_order,
             inplace=True)
+        # 'remove' here is correct, should not be 'to_remove'
         duplicates['remove'] = duplicates.duplicated(prop_int_id, keep='first')
-        # 'remove' here is correct, do not change to 'to_remove'
 
-        # Get the IDs of polygons to remove, and add them to the list
+        # Get the IDs of only the polygons to remove, and add them to the list
+        # 'remove' here is correct, should not be 'to_remove'
         ids_to_remove_pair = duplicates[duplicates['remove']][prop_id]
         ids_to_remove.update(ids_to_remove_pair)
 
@@ -440,13 +417,7 @@ def deduplicate_neighbors(
     to_return['to_remove'] = gdf_original[remove]
     to_return['to_keep'] = gdf_original[~remove]
 
-    keep = to_return['keep']
-    to_remove = to_return['to_remove']
-
-    # combine the keep and to_remove_all into 1 gdf, 
-    # stack them because already have the same columns
-    to_return = pd.concat([keep, to_remove], ignore_index = True)
-    to_return.reset_index(drop = True, inplace = True)
+    to_return = label_duplicates(to_return, prop_duplicated)
 
     if prop_duplicated in to_return.columns:
         if True in to_return[prop_duplicated].values:
@@ -680,6 +651,51 @@ def deduplicate_by_footprint(
         logger.info(f"{prop_duplicated} is not a column present after labeling.")
 
     return to_return
+
+
+def label_duplicates(deduplicate_output, prop_duplicated):
+    """Recombine the keep & removed GDFs and mark the removed as duplicates
+
+    Parameters
+    ----------
+    deduplicate_output : dict
+        The output of one of the deduplication methods
+
+    prop_duplicated : str
+        The column name to use to flag duplicate polygons
+
+    Returns
+    -------
+
+    GeoDataFrame
+    The combined GDF with duplicated polygons flagged.
+
+    """
+
+    not_duplicates = deduplicate_output['to_keep']
+    duplicates = deduplicate_output['to_remove']
+
+    if duplicates is not None:
+        duplicates[prop_duplicated] = True
+
+    if not_duplicates is not None:
+        if prop_duplicated in not_duplicates.columns:
+            # if the gdf of polygons to keep exists and
+            # contains the column `prop_duplicated`
+            # set values to True if already set to True
+            # if the value is not already True, set it to False
+            not_duplicates[prop_duplicated] = \
+                not_duplicates[prop_duplicated].apply(
+                    lambda x: True if x is True else False)
+        else:
+            # if the column `prop_duplicated` is not already present, 
+            # create it and set all values to False
+            not_duplicates[prop_duplicated] = False
+
+    combined = pd.concat([not_duplicates, duplicates], ignore_index=True)
+    combined.reset_index(drop=True, inplace=True)
+
+    return combined
 
 
 # def plot_duplicates(deduplicate_output, split_by):
