@@ -482,8 +482,9 @@ class TileStager():
                 if dedup_method is not None:
                     # If the file exists and config is set to deduplicate
                     # at any step, then open the file, append the new data, 
-                    # and identify duplicates where footprints overlap. 
-                    # (duplicates where polygons fall outside
+                    # and identify duplicates. 
+                    # (If deduplicating by footrpint:
+                    # duplicates where polygons fall outside
                     # the footprint were already labeled earlier).
                     # Then remove all the duplicated data if the config is 
                     # set to remove duplicates during staging.
@@ -501,9 +502,9 @@ class TileStager():
                 else:
                     # If the file exists and config is not set to deduplicate
                     # at any step, simply append the polygons to the existing file.
-                    # Neither file has been clipped to footprint, and we will not label
-                    # the polygons that fall within the footprints' intersection
-                    # as duplicates.
+                    # no polygons will be labeled as duplicates or not.
+                    # If deduplicating by footprint: 
+                    # neither file has been clipped to footprint
                     logger.info(f"Tile exists but dedup is not set to occur, so just "
                                 f"appending the polygons.")
                     
@@ -528,7 +529,9 @@ class TileStager():
                         # dedup_config = self.config.get_deduplication_config(gdf)
                         # gdf = dedup_method(gdf, **dedup_config)
                         logger.info(f"Tile does not yet exist and config is set to deduplicate "
-                                    f"at staging, so removing polygons that fell outside the footprint.")
+                                    f"at staging, so removing polygons that fell outside the footprint "
+                                    f"if deduplicating by footpint, and removing overlapping polygons\n"
+                                    f"if deduplicating by neighbor.")
                         # retreive the name of the duplicated column from config
                         prop_duplicated = self.config.polygon_prop('duplicated')
                         if prop_duplicated in data.columns:
@@ -542,13 +545,22 @@ class TileStager():
                                            lock = lock)
                     else:
                         # If the file does not yet exist and the config is set to deduplicate
-                        # at a step after staging, just save as a new tile. It already has
-                        # polys labeled as duplicates if they fall outside the footprint,
-                        # and the next time a poly in this tile is produced, it will be checked 
-                        # for duplicates where the two footprints overlap.
+                        # at a step after staging, just save as a new tile.
+                        # If deduplicating by footprint:
+                        # The gdf already has polys labeled as duplicates if they fall outside 
+                        # the footprint, and the next time a poly in this tile is produced, 
+                        # it will be checked for duplicates where the two footprints overlap.
+                        # If deduplicating by neighbor:
+                        # add the prop_duplicated col, with all values set to false
+                        # so all staged files have the same properties
                         logger.info(f"Tile does not yet exist and config is set to deduplicate at a step "
-                                    f"after staging, so just saving the new tile. Duplicates from `clip_gdf`"
-                                    f"  were identified.")
+                                    f"after staging, so just saving the new tile." 
+                                    f"\nIf deduplicating by footprint:\n"
+                                    f"Duplicates from `clip_gdf` were identified.")
+                        
+                        # if dedup method is neighbors, add prop_duplicated col with values False
+                        if dedup_method == "neighbor" and prop_duplicated not in data.columns:
+                            data[prop_duplicated] = False
                         
                         mode = 'w'
                         self.save_new_tile(data = data,
@@ -558,10 +570,13 @@ class TileStager():
                                            lock = lock)
                 else:
                     # If the tile does not yet exist and the config is not set to deduplicate
-                    # at any step, just save as a new tile. No duplicates were labeled earlier
-                    # either, because we did not check if any fell outside the footprint.
+                    # at any step, just save as a new tile. 
+                    # If deduplicating by footprint:
+                    # No duplicates were labeled earlier either,
+                    # because we did not check if any fell outside the footprint.
                     logger.info(f"Tile does not yet exist and config is not set to deduplicate, so just "
-                                f"saving the new tile. Duplicates from `clip_gdf` were not identified.")
+                                f"saving the new tile.\nIf deduplicating by footprint:\n"
+                                f"Duplicates from `clip_gdf` were not identified.")
                     
                     mode = 'w'
                     self.save_new_tile(data = data,

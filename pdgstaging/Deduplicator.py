@@ -690,10 +690,16 @@ def label_duplicates(deduplicate_output, prop_duplicated):
         else:
             # if the column `prop_duplicated` is not already present, 
             # create it and set all values to False
-            not_duplicates[prop_duplicated] = False
+            not_duplicates[prop_duplicated] = False 
 
     combined = pd.concat([not_duplicates, duplicates], ignore_index=True)
     combined.reset_index(drop=True, inplace=True)
+
+    if prop_duplicated not in combined.columns:
+        logger.warning(f"Config set to deduplicate but {prop_duplicated} col not in gdf.")
+    
+    if combined[prop_duplicated].isna().any():
+        logger.warning(f"{prop_duplicated} col has NA values.")
 
     return combined
 

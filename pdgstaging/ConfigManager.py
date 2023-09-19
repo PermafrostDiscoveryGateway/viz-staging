@@ -1324,9 +1324,6 @@ class ConfigManager():
         """
         method = self.get('deduplicate_method')
         if(method == 'neighbor'):
-            logger.warning(f"Deduplication method 'neighbors' has not been"
-                           f"tested for release 0.9.0. Please use deduplication"
-                           f"method 'footprints' or None for this release.")
             return deduplicate_neighbors
         if(method == 'footprints'):
             return deduplicate_by_footprint
