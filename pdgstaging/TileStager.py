@@ -560,6 +560,7 @@ class TileStager():
                         
                         # if dedup method is neighbors, add prop_duplicated col with values False
                         if dedup_method == "neighbor" and prop_duplicated not in data.columns:
+                            logger.info("Adding prop_duplicated column with False values to data.")
                             data[prop_duplicated] = False
                         
                         mode = 'w'
@@ -617,6 +618,15 @@ class TileStager():
             Nothing. Saves new tile in `staged` directory.
 
         """
+
+        # ensure data has staging_duplicated col if config set to deduplicate
+        dedup_method = self.config.get_deduplication_method()
+        prop_duplicated = self.config.polygon_prop('duplicated')
+        if dedup_method is not None and prop_duplicated not in data.columns:
+            error_msg = f"Config set to dedup, but prop_duplicated col not present in {data['staging_tile']} while saving tile."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
         try: 
             # Ignore the FutureWarning raised from geopandas issue 2347
             with warnings.catch_warnings():

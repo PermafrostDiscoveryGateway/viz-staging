@@ -696,7 +696,9 @@ def label_duplicates(deduplicate_output, prop_duplicated):
     combined.reset_index(drop=True, inplace=True)
 
     if prop_duplicated not in combined.columns:
-        logger.warning(f"Config set to deduplicate but {prop_duplicated} col not in gdf.")
+        error_msg = f"Config set to deduplicate but {prop_duplicated} col not in gdf after labeling dups."
+        logger.error(error_msg)
+        raise ValueError(error_msg)
     
     if combined[prop_duplicated].isna().any():
         logger.warning(f"{prop_duplicated} col has NA values.")
