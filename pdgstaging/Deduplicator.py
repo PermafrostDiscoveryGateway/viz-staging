@@ -643,10 +643,12 @@ def deduplicate_by_footprint(
     if prop_duplicated in to_return.columns:
         if True in to_return[prop_duplicated].values:
             sum_true = (to_return[prop_duplicated] == True).value_counts()[True]
-            logger.info(f"Sum of True values in the {prop_duplicated} col is: {sum_true}")
+            logger.info(f"Sum of True values in the {prop_duplicated}"
+                        f" col is: {sum_true}")
         else:
             sum_true = 0
-            logger.info(f"Sum of True values in the {prop_duplicated} col is: {sum_true}")
+            logger.info(f"Sum of True values in the {prop_duplicated}" 
+                        f"col is: {sum_true}")
     else:
         logger.info(f"{prop_duplicated} is not a column present after labeling.")
 
@@ -696,12 +698,13 @@ def label_duplicates(deduplicate_output, prop_duplicated):
     combined.reset_index(drop=True, inplace=True)
 
     if prop_duplicated not in combined.columns:
-        error_msg = f"Config set to deduplicate but {prop_duplicated} col not in gdf after labeling dups."
-        logger.error(error_msg)
-        raise ValueError(error_msg)
+        msg = (f"Config set to dedup but {prop_duplicated} column"
+               f" not in gdf after labeling duplicates."
+               f"\nColumns are: {combined.columns}")
+        logger.info(msg)
     
     if combined[prop_duplicated].isna().any():
-        logger.warning(f"{prop_duplicated} col has NA values.")
+        logger.info(f"{prop_duplicated} column has NA values.")
 
     return combined
 

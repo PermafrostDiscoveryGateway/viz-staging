@@ -483,7 +483,7 @@ class TileStager():
                     # If the file exists and config is set to deduplicate
                     # at any step, then open the file, append the new data, 
                     # and identify duplicates. 
-                    # (If deduplicating by footrpint:
+                    # (If deduplicating by footprint:
                     # duplicates where polygons fall outside
                     # the footprint were already labeled earlier).
                     # Then remove all the duplicated data if the config is 
@@ -551,17 +551,27 @@ class TileStager():
                         # the footprint, and the next time a poly in this tile is produced, 
                         # it will be checked for duplicates where the two footprints overlap.
                         # If deduplicating by neighbor:
-                        # add the prop_duplicated col, with all values set to false
-                        # so all staged files have the same properties
+                        # the prop_duplicated col will be added, 
+                        # with all values set to false so all staged files have same properties.
+                        # This will be overwritten if this file overlaps with others later,
+                        # with combine_and_deduplicate().
                         logger.info(f"Tile does not yet exist and config is set to deduplicate at a step "
                                     f"after staging, so just saving the new tile." 
                                     f"\nIf deduplicating by footprint:\n"
                                     f"Duplicates from `clip_gdf` were identified.")
-                        
-                        # if dedup method is neighbors, add prop_duplicated col with values False
-                        if dedup_method == "neighbor" and prop_duplicated not in data.columns:
-                            logger.info("Adding prop_duplicated column with False values to data.")
+
+                        dedup_method = self.config.get_deduplication_method()
+                        prop_duplicated = self.config.polygon_prop('duplicated')
+                        logger.info(f"Checking for presence of {prop_duplicated} col with dedup method set"
+                                    f" to {dedup_method}")
+                        if dedup_method is not None and prop_duplicated not in data.columns:
+                            logger.info(f"Adding {prop_duplicated} column with False values to "
+                                        f"{data['staging_tile']}\nbecause property did not "
+                                        f"already exist.")
                             data[prop_duplicated] = False
+                        else:
+                            logger.info(f"File {data['staging_tile']} that did not yet exist did have "
+                                        f" {prop_duplicated} col before saving.")
                         
                         mode = 'w'
                         self.save_new_tile(data = data,
@@ -574,7 +584,7 @@ class TileStager():
                     # at any step, just save as a new tile. 
                     # If deduplicating by footprint:
                     # No duplicates were labeled earlier either,
-                    # because we did not check if any fell outside the footprint.
+                    # because the workflow did not check if any fell outside the footprint.
                     logger.info(f"Tile does not yet exist and config is not set to deduplicate, so just "
                                 f"saving the new tile.\nIf deduplicating by footprint:\n"
                                 f"Duplicates from `clip_gdf` were not identified.")
@@ -618,14 +628,6 @@ class TileStager():
             Nothing. Saves new tile in `staged` directory.
 
         """
-
-        # ensure data has staging_duplicated col if config set to deduplicate
-        dedup_method = self.config.get_deduplication_method()
-        prop_duplicated = self.config.polygon_prop('duplicated')
-        if dedup_method is not None and prop_duplicated not in data.columns:
-            error_msg = f"Config set to dedup, but prop_duplicated col not present in {data['staging_tile']} while saving tile."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
 
         try: 
             # Ignore the FutureWarning raised from geopandas issue 2347
