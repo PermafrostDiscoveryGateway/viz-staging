@@ -208,7 +208,8 @@ def deduplicate_neighbors(
     return_intersections : bool, optional
         If True, the GeoDataFrame with the intersection geometries is returned
         in addition to the GeoDataFrames with the deduplicated and removed
-        geometries. Default is False.
+        geometries. Default is False. This option is not currently available in
+        this release.
     prop_duplicated : str, optional
         Defaults to "staging_duplicated". The column name / property to use to flag
         duplicates when label is True.
@@ -496,7 +497,7 @@ def deduplicate_by_footprint(
         This will be integrated again in releases after 0.9.0.
     """
 
-    logger.info(f"Executing deduplicate_by_footprint() for {gdf}")
+    logger.info(f"Executing footprint deduplication.")
 
     gdf = gdf.copy()
 
