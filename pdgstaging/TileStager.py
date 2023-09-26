@@ -482,8 +482,9 @@ class TileStager():
                 if dedup_method is not None:
                     # If the file exists and config is set to deduplicate
                     # at any step, then open the file, append the new data, 
-                    # and identify duplicates where footprints overlap. 
-                    # (duplicates where polygons fall outside
+                    # and identify duplicates. 
+                    # (If deduplicating by footprint:
+                    # duplicates where polygons fall outside
                     # the footprint were already labeled earlier).
                     # Then remove all the duplicated data if the config is 
                     # set to remove duplicates during staging.
@@ -501,9 +502,9 @@ class TileStager():
                 else:
                     # If the file exists and config is not set to deduplicate
                     # at any step, simply append the polygons to the existing file.
-                    # Neither file has been clipped to footprint, and we will not label
-                    # the polygons that fall within the footprints' intersection
-                    # as duplicates.
+                    # no polygons will be labeled as duplicates or not.
+                    # If deduplicating by footprint: 
+                    # neither file has been clipped to footprint
                     logger.info(f"Tile exists but dedup is not set to occur, so just "
                                 f"appending the polygons.")
                     
@@ -518,21 +519,27 @@ class TileStager():
                 if dedup_method is not None:
                     if self.config.deduplicate_at('staging'):
                         # If the file does not yet exist and the config is set to deduplicate
-                        # at staging, just remove the polygons that were already labeled as 
+                        # at staging:
+                        # If deduplicatinf by footprint:
+                        # remove the polygons that were already labeled as 
                         # duplicates because they fell outside the footprint,
                         # and save the tile as a new tile.
-
-                        # dedup_start_time = datetime.now()
-                        # logger.info(f'Starting deduplication in tile {tile_path} with {len(gdf)}'
-                        #             'polygons.')
-                        # dedup_config = self.config.get_deduplication_config(gdf)
-                        # gdf = dedup_method(gdf, **dedup_config)
+                        # If deduplicating by neighbor:
+                        # the prop_duplicated col has not been created yet,
+                        # so create it and set all values to False
                         logger.info(f"Tile does not yet exist and config is set to deduplicate "
-                                    f"at staging, so removing polygons that fell outside the footprint.")
-                        # retreive the name of the duplicated column from config
+                                    f"at staging, so removing polygons that fell outside the footprint "
+                                    f"if deduplicating by footpint, and removing overlapping polygons\n"
+                                    f"if deduplicating by neighbor if column already existed.\n "
+                                    f"Creating column with all false values it it did not exist.")
                         prop_duplicated = self.config.polygon_prop('duplicated')
+                        logger.info(f"Checking for presence of {prop_duplicated} column.")
                         if prop_duplicated in data.columns:
                             data = data[~data[prop_duplicated]]
+                        else:
+                            logger.info(f"Adding {prop_duplicated} column because property did not "
+                                        f"already exist.")
+                            data[prop_duplicated] = False
 
                         mode = 'w'
                         self.save_new_tile(data = data,
@@ -542,13 +549,30 @@ class TileStager():
                                            lock = lock)
                     else:
                         # If the file does not yet exist and the config is set to deduplicate
-                        # at a step after staging, just save as a new tile. It already has
-                        # polys labeled as duplicates if they fall outside the footprint,
-                        # and the next time a poly in this tile is produced, it will be checked 
-                        # for duplicates where the two footprints overlap.
+                        # at a step after staging, just save as a new tile.
+                        # If deduplicating by footprint:
+                        # The gdf already has polys labeled as duplicates if they fall outside 
+                        # the footprint, and the next time a poly in this tile is produced, 
+                        # it will be checked for duplicates where the two footprints overlap.
+                        # If deduplicating by neighbor:
+                        # the prop_duplicated col will be added, 
+                        # with all values set to false so all staged files have same properties.
+                        # This will be overwritten if this file overlaps with others later,
+                        # with combine_and_deduplicate().
                         logger.info(f"Tile does not yet exist and config is set to deduplicate at a step "
-                                    f"after staging, so just saving the new tile. Duplicates from `clip_gdf`"
-                                    f"  were identified.")
+                                    f"after staging, so just saving the new tile." 
+                                    f"\nIf deduplicating by footprint: "
+                                    f"Duplicates from `clip_gdf` were identified.")
+
+                        prop_duplicated = self.config.polygon_prop('duplicated')
+                        logger.info(f"Checking for presence of {prop_duplicated} column.")
+                        if prop_duplicated not in data.columns:
+                            logger.info(f"Adding {prop_duplicated} column because property did not "
+                                        f"already exist.")
+                            data[prop_duplicated] = False
+                        else:
+                            logger.info(f"Tile that did not yet exist did have "
+                                        f"{prop_duplicated} column before saving.")
                         
                         mode = 'w'
                         self.save_new_tile(data = data,
@@ -558,10 +582,13 @@ class TileStager():
                                            lock = lock)
                 else:
                     # If the tile does not yet exist and the config is not set to deduplicate
-                    # at any step, just save as a new tile. No duplicates were labeled earlier
-                    # either, because we did not check if any fell outside the footprint.
+                    # at any step, just save as a new tile. 
+                    # If deduplicating by footprint:
+                    # No duplicates were labeled earlier either,
+                    # because the workflow did not check if any fell outside the footprint.
                     logger.info(f"Tile does not yet exist and config is not set to deduplicate, so just "
-                                f"saving the new tile. Duplicates from `clip_gdf` were not identified.")
+                                f"saving the new tile.\nIf deduplicating by footprint:\n"
+                                f"Duplicates from `clip_gdf` were not identified.")
                     
                     mode = 'w'
                     self.save_new_tile(data = data,
@@ -602,6 +629,7 @@ class TileStager():
             Nothing. Saves new tile in `staged` directory.
 
         """
+
         try: 
             # Ignore the FutureWarning raised from geopandas issue 2347
             with warnings.catch_warnings():

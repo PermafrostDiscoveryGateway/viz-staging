@@ -248,12 +248,7 @@ class ConfigManager():
                     option. If 'neighbor', then the input data will be 
                     deduplicated by removing nearby or overlapping polygons, 
                     as determined by the 'deduplicate_centroid_tolerance' and
-                    'deduplicate_overlap_tolerance' options. Note that with 
-                    release 0.9.0, the 'neighbor' method has been not been
-                    thoroughly tested. Only the 'footprints' method has been 
-                    thoroughly tested and should be applied to input data, 
-                    as this release is tailored to a dataset that requires 
-                    this deduplication method.
+                    'deduplicate_overlap_tolerance' options.
                 - deduplicate_keep_rules : list of tuple: []
                     Required for both deduplication methods. Rules that define
                     which of the polygons to keep when two or more are
@@ -300,9 +295,7 @@ class ConfigManager():
                     before calculating the distance between them.
                     centroid_tolerance will use the units of this CRS. Set to
                     None to skip the re-projection and use the CRS of the
-                    GeoDataFrame. Note that with release 0.9.0, 
-                    the 'neighbor' method has been not been thoroughly tested 
-                    and should not be applied to input data.
+                    GeoDataFrame.
                 - deduplicate_clip_to_footprint : bool, optional
                     For the 'footprints' deduplication method only. If True,
                     then polygons that fall outside the bounds of the
@@ -1324,9 +1317,6 @@ class ConfigManager():
         """
         method = self.get('deduplicate_method')
         if(method == 'neighbor'):
-            logger.warning(f"Deduplication method 'neighbors' has not been"
-                           f"tested for release 0.9.0. Please use deduplication"
-                           f"method 'footprints' or None for this release.")
             return deduplicate_neighbors
         if(method == 'footprints'):
             return deduplicate_by_footprint
