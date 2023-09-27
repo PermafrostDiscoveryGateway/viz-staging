@@ -1141,12 +1141,14 @@ class ConfigManager():
                         'name': 'polygon_count',
                         'weight_by': 'count',
                         'property': 'polygon_count',
-                        'aggregation_method':'sum'
+                        'aggregation_method':'sum',
+                        'nodata_val: 0
                     }, {
                         'name': 'coverage',
                         'weight_by': 'area',
                         'property': 'grid_area_prop',
-                        'aggregation_method': 'sum'
+                        'aggregation_method': 'sum',
+                        'nodata_val: 0
                     }
                 ]
             }
@@ -1165,7 +1167,8 @@ class ConfigManager():
             'name',
             'weight_by',
             'property',
-            'aggregation_method')
+            'aggregation_method',
+            'nodata_val')
         stats_config = []
         for stat_config in self.config['statistics']:
             stats_config.append(
