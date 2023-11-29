@@ -208,7 +208,7 @@ class ConfigManager():
                         https://gist.github.com/lopspower/03fb1cc0ac9f32ef38f4)
                     - nodata_val: int or float or None or np.nan
                         The value of pixels to interpret as no data or missing
-                        data. Defaults to None.
+                        data. Defaults to 0.
                     - nodata_color: str
                         When mapping pixel values to colors, the color to use
                         for pixels with the no data value.
