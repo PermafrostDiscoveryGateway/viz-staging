@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "pdgstaging"
+version = "0.9.1"
+description = "Geospatial data tiling workflow"
+authors = [
+    "Robyn Thiessen-Bock <thiessenbock@nceas.ucsb.edu>",
+    "Juliet Cohen <jcohen@nceas.ucsb.edu>",
+    "Lauren Walker <walker@nceas.ucsb.edu>",
+    "Matthew B. Jones <jones@nceas.ucsb.edu>",
+]
+license = 'Apache Software License 2.0'
+readme = "README.md"
+repository = 'https://github.com/PermafrostDiscoveryGateway/viz-staging'
+classifiers=[
+    'Development Status :: 2 - Pre-Alpha',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: Apache Software License',
+    'Natural Language :: English',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.9',
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9"
+numpy = ">=1.2"
+pandas = ">=1.4, < 2.0"
+shapely = ">= 2, < 3.0"
+geopandas = ">= 0.12.2, < 1.0"
+morecantile = ">= 3.1, < 4.0"
+Rtree = ">= 0.9, < 1.0"
+filelock = ">= 3.6, < 4.0"
+coloraide = ">= 0.10, < 1"
+colormaps = "== 0.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
