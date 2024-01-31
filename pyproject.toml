@@ -32,6 +32,9 @@ filelock = ">= 3.6, < 4.0"
 coloraide = ">= 0.10, < 1"
 colormaps = "== 0.4.0"
 
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
