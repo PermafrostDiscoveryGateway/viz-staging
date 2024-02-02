@@ -1472,3 +1472,15 @@ class ConfigManager():
         rgb_vals = (cmap.discrete(pal_len).colors * 255).astype(int).tolist()
         rgb_hex = [f'#{i:02x}{j:02x}{k:02x}' for i, j, k in rgb_vals]
         return rgb_hex
+
+
+def validate_dedup_rules(gdf, config):
+    gdf_attrs = gdf.attrs
+    allowed_comp_operators = ['smaller', 'larger']
+    for rule in config:
+        if rule[0] not in gdf_attrs.keys():
+            raise ValueError(
+                f'invalid deduplication rule: property {rule[0]} does not exist in dataset')
+        if rule[1] not in allowed_comp_operators:
+            raise ValueError(
+                f'invalid deduplication rule: second parameter must be one of {allowed_comp_operators}')
