@@ -1,10 +1,11 @@
 from pandas import DataFrame
+from pdgstaging import ConfigManager
 
 def test_init():
     """Initialize tests and show they are working.
     """
     assert 1 == 1
-    
+
 def test_load_data():
     """Load example testing data for staging tests.
     """
