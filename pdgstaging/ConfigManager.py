@@ -1434,6 +1434,19 @@ class ConfigManager():
         return updates
     
     @staticmethod
+    def validate_dedup_rules(gdf, config):
+        gdf_cols = gdf.columns 
+        print("cols: " + str(gdf_cols))
+        allowed_comp_operators = ['smaller', 'larger']
+        for rule in config:
+            if rule[0] not in gdf_cols:
+                raise ValueError(
+                    f'invalid deduplication rule: property {rule[0]} does not exist in dataset')
+            if rule[1] not in allowed_comp_operators:
+                raise ValueError(
+                    f'invalid deduplication rule: second parameter must be one of {allowed_comp_operators}')
+    
+    @staticmethod
     def validate_palette(palette):
         if isinstance(palette, list):
             if len(palette) < 2:
@@ -1474,13 +1487,3 @@ class ConfigManager():
         return rgb_hex
 
 
-def validate_dedup_rules(gdf, config):
-    gdf_attrs = gdf.attrs
-    allowed_comp_operators = ['smaller', 'larger']
-    for rule in config:
-        if rule[0] not in gdf_attrs.keys():
-            raise ValueError(
-                f'invalid deduplication rule: property {rule[0]} does not exist in dataset')
-        if rule[1] not in allowed_comp_operators:
-            raise ValueError(
-                f'invalid deduplication rule: second parameter must be one of {allowed_comp_operators}')
