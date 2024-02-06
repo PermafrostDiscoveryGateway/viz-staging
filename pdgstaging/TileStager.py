@@ -177,35 +177,7 @@ class TileStager():
             fp = self.get_data(fp_path)
             logger.info(f' Checking CRSs of polygons and footprint.')
 
-            iwp_crs = gdf.crs
-            fp_crs = fp.crs
-
-            if iwp_crs == fp_crs:
-                logger.info(f" CRSs match. They are both {iwp_crs}.")
-            else:
-                logger.info(f" CRSs do not match.\n IWP's CRS is {iwp_crs}."
-                            f" Footprint's CRS is {fp_crs}.")
-                # transform the footprint to the CRS of the polygon data
-                fp.to_crs(iwp_crs, inplace = True)
-                # check again
-                fp_crs_transformed = fp.crs
-                if iwp_crs == fp_crs_transformed:
-                    logger.info("Footprint CRS has been transformed to CRS of polygons.")
-                else:
-                    logger.error("Failed to transform footprint CRS to CRS of polygons.")
-                    return
-
-            # determine if polygons fall within or outside the footprint
-            # first retrieve the name of the column we will use to label duplicates
-            prop_duplicated = self.config.polygon_prop('duplicated')
-            gdf_with_labels = clip_gdf(
-                gdf = gdf.copy(), # the gdf to clip
-                boundary = fp.copy(), # the footprint
-                method = 'intersects',
-                prop_duplicated = prop_duplicated
-            )
-
-            return gdf_with_labels
+            return clip_to_footprint(gdf, fp, self.config.polygon_prop('duplicated'))
         else:
             logger.info(f" Either clip_to_footprint was set to False, or config"
                         f" was not set to deduplicate at any step. Returning original GDF"
@@ -863,3 +835,55 @@ class TileStager():
         lock.release()
         if os.path.exists(lock.lock_file):
             os.remove(lock.lock_file)
+
+def clip_to_footprint(gdf, fp, duplicated_prop_name):
+    """
+        Given a GeoDataFrame and a footprint, determine which polygons fall outside the footprint,
+        and label the polygons as True or False in a new column
+        that defualts to 'staging_duplicated'.
+
+        Parameters
+        ----------
+        gdf : GeoDataFrame
+            The GDF undergoing staging.
+        
+        fp: GeoDataFrame 
+            The GDF containing the footprint
+
+        duplicated_prop_name: str
+            The label to use for duplicated polygons
+
+        Returns
+        -------
+        The GeodataFrame with polygons that fall outside
+        the footprint labeled as duplicates.
+
+    """
+    iwp_crs = gdf.crs
+    fp_crs = fp.crs
+
+    if iwp_crs == fp_crs:
+        logger.info(f" CRSs match. They are both {iwp_crs}.")
+    else:
+        logger.info(f" CRSs do not match.\n IWP's CRS is {iwp_crs}."
+                    f" Footprint's CRS is {fp_crs}.")
+        # transform the footprint to the CRS of the polygon data
+        fp.to_crs(iwp_crs, inplace = True)
+        # check again
+        fp_crs_transformed = fp.crs
+        if iwp_crs == fp_crs_transformed:
+            logger.info("Footprint CRS has been transformed to CRS of polygons.")
+        else:
+            logger.error("Failed to transform footprint CRS to CRS of polygons.")
+            return
+
+    # determine if polygons fall within or outside the footprint
+    # first retrieve the name of the column we will use to label duplicates
+    gdf_with_labels = clip_gdf(
+        gdf = gdf.copy(), # the gdf to clip
+        boundary = fp.copy(), # the footprint
+        method = 'intersects',
+        prop_duplicated = duplicated_prop_name 
+    )
+
+    return gdf_with_labels

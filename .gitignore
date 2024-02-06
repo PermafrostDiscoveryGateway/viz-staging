@@ -133,3 +133,6 @@ dmypy.json
 
 # Poetry
 poetry.lock
+
+# scratch file
+*scratch*
