@@ -8,6 +8,7 @@ from datetime import datetime
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from shapely import get_coordinates
 from filelock import FileLock
 
 from . import ConfigManager, TilePathManager, TMSGrid
@@ -841,6 +842,32 @@ class TileStager():
         lock.release()
         if os.path.exists(lock.lock_file):
             os.remove(lock.lock_file)
+
+
+def label_am_crossings(gdf, am_crossing_label): 
+    """
+        Given a GeoDataFrame and a label, will add a column to the DataFrame 
+        containing a bool indicating whether the polygon in that row crosses
+        the antimeridian.
+
+        Parameters
+        ----------
+        gdf: GeoDataFrame
+            The GDF undergoing staging
+        
+        am_crossing_label: str
+            The label to use for the new column, which is a bool series
+    """
+    def crosses_am(geometry): 
+        coords = get_coordinates(geometry)
+        for idx, c in enumerate(coords): 
+            if abs(c[0] - coords[idx-1][0]) > 180.0:
+                return True
+        return False
+ 
+    gdf[am_crossing_label] = gdf['geometry'].apply(crosses_am)
+    return gdf
+
 
 def clean_viz_fields(gdf, non_viz_fields): 
     """

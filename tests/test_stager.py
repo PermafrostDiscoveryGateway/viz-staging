@@ -1,7 +1,7 @@
 import geopandas as gpd
 import geopandas.testing as gpd_test
 from shapely import Polygon, MultiPolygon, Point
-from pdgstaging.TileStager import clip_to_footprint, clean_viz_fields
+from pdgstaging.TileStager import clip_to_footprint, clean_viz_fields, label_am_crossings
 
 def test_clip_to_footprint():        
     tests = {
@@ -75,21 +75,35 @@ def test_clip_to_footprint():
         gpd_test.assert_geodataframe_equal(clipped, test["want"])
 
 def test_clean_viz_fields(): 
-    tests = {
-        "test1": {
-            "gdf": gpd.GeoDataFrame({"name": ["MoMA", "Guggenheim"], 
+    gdf = gpd.GeoDataFrame({"name": ["MoMA", "Guggenheim"], 
                        "geometry": [Point(40.761513963876396, -73.97749285407829), Point(40.7833708203463, -73.95905025242519)],
                        "some_viz_field": [None, 1.0],
-                       "non_viz_field": [None, None]}),
-            "non_viz_fields": ["non_viz_field"],
-            "want": gpd.GeoDataFrame({"name": ["MoMA", "Guggenheim"], 
+                       "non_viz_field": [None, None]})
+    non_viz_fields = ["non_viz_field"]
+    want = gpd.GeoDataFrame({"name": ["MoMA", "Guggenheim"], 
                        "geometry": [Point(40.761513963876396, -73.97749285407829), Point(40.7833708203463, -73.95905025242519)],
                        "some_viz_field": [0.0, 1.0],
                        "non_viz_field": [None, None]})
-        }
+    res = clean_viz_fields(gdf, non_viz_fields)
+    gpd_test.assert_geodataframe_equal(res, want)
 
-    }
-    for name, test in tests.items():
-        print(f'running test: {name}')
-        res = clean_viz_fields(test["gdf"], test["non_viz_fields"])
-        gpd_test.assert_geodataframe_equal(res, test["want"])
+def test_label_am_crossings(): 
+    gdf = gpd.GeoDataFrame(
+        {"name": ["cross1", "nocross1"],
+            "geometry": [
+            Polygon([(178, 80), (-178, 80), (-178, 65), (178, 65)]),
+            Polygon([(170, 80), (178, 80), (178, 65), (170, 65)]),
+            ]},
+    )
+    label = "crosses_am"
+    want = gpd.GeoDataFrame(
+        {"name": ["cross1", "nocross1"],
+            "geometry": [
+            Polygon([(178, 80), (-178, 80), (-178, 65), (178, 65)]),
+            Polygon([(170, 80), (178, 80), (178, 65), (170, 65)]),
+            ],
+            "crosses_am": [True, False]},
+    )
+
+    res = label_am_crossings(gdf, label)
+    gpd_test.assert_geodataframe_equal(res, want)
