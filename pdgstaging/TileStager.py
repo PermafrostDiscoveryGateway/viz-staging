@@ -129,6 +129,7 @@ class TileStager():
         gdf = gdf[gdf.geometry.type == 'Polygon']
 
         if (gdf is not None) and (len(gdf) > 0):
+            gdf = self.clean_viz_fields(gdf)
             gdf = self.simplify_geoms(gdf)
             # clip to footprint before CRS of IWP data is transformed
             # to EPSG:4326
@@ -227,6 +228,7 @@ class TileStager():
             raise ValueError(error_msg)
 
         return gdf
+     
 
     def set_crs(self, gdf):
         """
@@ -776,6 +778,10 @@ class TileStager():
                 (datetime.now() - start_time)
             )
         )
+    
+    def clean_viz_fields(self, gdf):
+        non_viz_fields = self.config.get("non_viz_fields")
+        return clean_viz_fields(gdf, non_viz_fields)
 
     def check_footprints(self):
         """
@@ -835,6 +841,25 @@ class TileStager():
         lock.release()
         if os.path.exists(lock.lock_file):
             os.remove(lock.lock_file)
+
+def clean_viz_fields(gdf, non_viz_fields): 
+    """
+        Given a GeoDataFrame and a list of fields that are NOT to be vizualized, clean all the fields
+        not specified as non_viz_fields of NaN and -inf values. 
+
+        Parameters
+        ----------
+        gdf: GeoDataFrame
+            The GDF to clean
+        
+        non_viz_fields: list of str
+            The fields to LEAVE INTACT with NaN/-inf values
+    """
+    cols = gdf.columns 
+    viz_fields = [col for col in cols if col not in non_viz_fields]
+    for f in viz_fields:
+        gdf[f] = gdf[f].fillna(0)
+    return gdf
 
 def clip_to_footprint(gdf, fp, duplicated_prop_name):
     """
