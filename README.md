@@ -1,7 +1,7 @@
 # Viz-staging: vector staging for the Permafrost Discovery Gateway visualization pipeline
 
 - **Authors**: Robyn Thiessen-Bock ; Juliet Cohen ; Matthew B. Jones ; Kastan Day ; Lauren Walker
-- **DOI**: 10.18739/A2RV0D26C
+- **DOI**: [10.18739/A2RV0D26C](https://ezid.cdlib.org/id/doi:10.18739/A2RV0D26C)
 - **License**: [Apache 2](https://opensource.org/license/apache-2-0/)
 - [Package source code on GitHub](https://github.com/PermafrostDiscoveryGateway/viz-staging)
 - [Submit bugs and feature requests](https://github.com/PermafrostDiscoveryGateway/viz-staging/issues/new)
@@ -10,7 +10,7 @@ The `pdgstaging` package divides vector files into tiled vector files according 
 
 ![PDG staging summary](docs/images/staging_tldr.png)
 
-# Citation
+## Citation
 
 Cite this software as:
 
@@ -93,7 +93,7 @@ The staging process will also output a summary CSV file with one row for each ti
 - If the deduplication method specified in the configuration is `footprints`, the footprint file(s) are provided with a structure that follows the [docs](https://github.com/PermafrostDiscoveryGateway/viz-staging/blob/main/docs/footprints.md).
 - In order for logging to work properly, the node running the script that uses this package has a `/tmp` directory so the `log.log` file can populate there.
 
-# License
+## License
 
 ```
 Copyright [2013] [Regents of the University of California]
