@@ -853,6 +853,16 @@ class TileStager():
             os.remove(lock.lock_file)
 
 def split_am_polygon(polygon):
+    """
+        Given a polygon that crosses the antimeridian, will split that 
+        polygon into two. Assumes only a single antimeridian crossing, and 
+        no holes in the polygon. Returns the resultant split polygons.
+
+        Parameters
+        ----------
+        polygon: shapely.Polygon
+            the polygon to split
+    """
     coords = polygon.exterior.coords
     if len(polygon.interiors) > 0: 
         raise ValueError("cannot split polygon with internal holes")
@@ -891,6 +901,16 @@ def split_am_polygon(polygon):
     return split_polygons
 
 def translate_polygon_to_valid_geography(polygon): 
+    """
+    Given a polygon translated into invalid geographic space 
+    (with lon < -180 or > 180), converts that polygon back into
+    valid geographic coordinates.
+
+    Parameters
+    ----------
+    polygon: shapely.Polygon
+        the polygon to translate
+    """
     (minx, _, maxx, _) = polygon.bounds
     if minx < -180.0:
         geo_polygon = affinity.translate(polygon, xoff=360)
@@ -911,6 +931,20 @@ def polygon_crosses_am(geometry):
     return False
 
 def split_am_crossing_polygons(gdf, am_crossing_label):
+    """
+        Given a GeoDataFrame and a label to use for crossings, will 
+        label and then split all polygons that cross the antimeridian, appending
+        the newly created geometries to the end of the dataframe and removing
+        the old ones. Returns the modified DataFrame.
+
+        Parameters 
+        ----------
+        gdf: GeoDataFrame
+            The GDF undergoing staging
+        
+        am_crossing_label: str
+            The label to use for antimeridian crossings. Will not be retained.
+    """
     gdf = label_am_crossings(gdf, am_crossing_label) 
     origin_crs = gdf.crs # we need to reset the CRS at the end, so grab it now
     to_split = gdf[gdf[am_crossing_label]] # select the subset that need splitting
