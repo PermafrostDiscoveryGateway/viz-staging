@@ -93,6 +93,14 @@ The staging process will also output a summary CSV file with one row for each ti
 - If the deduplication method specified in the configuration is `footprints`, the footprint file(s) are provided with a structure that follows the [docs](https://github.com/PermafrostDiscoveryGateway/viz-staging/blob/main/docs/footprints.md).
 - In order for logging to work properly, the node running the script that uses this package has a `/tmp` directory so the `log.log` file can populate there.
 
+## Development
+
+Build and test using poetry and pytest.
+
+- To build, run `poetry build`
+- To test, run `pytest` from the root of the package directory
+- VS Code configuration is setup to configure tests as well
+
 ## License
 
 ```
