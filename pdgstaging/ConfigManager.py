@@ -692,6 +692,7 @@ class ConfigManager():
             resampling_methods.append(stat['resampling_method'])
         return resampling_methods
 
+
     def get_metacatui_raster_configs(self, base_url=''):
         """
             Return a dictionary that can be used to configure a 3d tile layer
@@ -767,11 +768,10 @@ class ConfigManager():
             color_palette = self.get_stat_config(stat)['palette']
 
             color_objs = []
-            if isinstance(color_palette, list):
-                # convert all to hex codes.
-                colors = [self.to_hex(c) for c in color_palette]
-            elif isinstance(color_palette, str):
-                colors = self.color_list_from_cmaps(color_palette)
+            self.validate_palette(color_palette)
+
+            # convert all to hex codes.
+            colors = [self.to_hex(c) for c in color_palette]
             num_cols = len(colors)
             # Get min and max. As the Cesium map doesn't support a different
             # palette for each z-level yet, just use the max_z palette
@@ -1432,6 +1432,14 @@ class ConfigManager():
                 updates.append(f'{key} removed')
 
         return updates
+    
+    @staticmethod
+    def validate_palette(palette):
+        if isinstance(palette, list):
+            if len(palette) < 2:
+                raise ValueError("color palette must have at least 2 colors")
+        if isinstance(palette, str): 
+            raise ValueError("colormaps is no longer supported")
 
     @staticmethod
     def to_hex(color_str):
