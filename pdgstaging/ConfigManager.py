@@ -122,11 +122,6 @@ class ConfigManager():
             - simplify_tolerance : float
                 The tolerance to use when simplifying the input polygons.
                 Defaults to 0.0001. Set to None to skip simplification.
-            - non_viz_fields : list of str
-                Fields that are not intended for visualization. Fields not 
-                specified here will have NaN and inf values removed. A field
-                should be added to this list to leave those values intact. 
-                Defaults to [].
 
         - Tiling & rasterization options.
             - tms_id : str
@@ -390,7 +385,6 @@ class ConfigManager():
         'input_crs': None,
         # Staging options
         'simplify_tolerance': 0.0001,
-        'non_viz_fields': [],
         # Tiling & rasterization options
         'tms_id': 'WGS1984Quad',
         'tile_path_structure': ('style', 'tms', 'z', 'x', 'y'),

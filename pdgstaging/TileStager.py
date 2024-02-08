@@ -1,4 +1,6 @@
+import copy
 import logging
+import math
 from . import logging_config
 import os
 import uuid
@@ -8,7 +10,8 @@ from datetime import datetime
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely import get_coordinates
+from shapely import LineString, Polygon, get_coordinates, affinity
+from shapely.ops import split
 from filelock import FileLock
 
 from . import ConfigManager, TilePathManager, TMSGrid
@@ -136,6 +139,7 @@ class TileStager():
             # to EPSG:4326
             gdf = self.clip_to_footprint(gdf, path)
             gdf = self.set_crs(gdf)
+            gdf = self.split_am_crossing_polygons(gdf)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
             self.save_tiles(gdf)
@@ -275,6 +279,10 @@ class TileStager():
             f'{datetime.now() - start_time}'
         )
         return gdf
+    
+    def split_am_crossing_polygons(self, gdf):
+        label = self.config.get("am_crossing_label")
+        return split_am_crossing_polygons(gdf, label)
 
     def simplify_geoms(self, gdf):
         """
@@ -781,8 +789,9 @@ class TileStager():
         )
     
     def clean_viz_fields(self, gdf):
-        non_viz_fields = self.config.get("non_viz_fields")
-        return clean_viz_fields(gdf, non_viz_fields)
+        stats = self.config.get("statistics")
+        stat_names = [stat["name"] for stat in stats]
+        return clean_viz_fields(gdf, stat_names)
 
     def check_footprints(self):
         """
@@ -843,6 +852,83 @@ class TileStager():
         if os.path.exists(lock.lock_file):
             os.remove(lock.lock_file)
 
+def split_am_polygon(polygon):
+    coords = polygon.exterior.coords
+    if len(polygon.interiors) > 0: 
+        raise ValueError("cannot split polygon with internal holes")
+    shifted_coords = [coord for coord in coords]
+
+    # translate the polygon
+    for coord_idx, (lon, _) in enumerate(shifted_coords[1:], start=1):
+        lon_prev, _ = shifted_coords[coord_idx - 1]
+        cross = line_crosses_am(shifted_coords[coord_idx], shifted_coords[coord_idx - 1])
+        dlon = lon - lon_prev
+        direction = math.copysign(1, dlon)
+        if cross: 
+            cross_shift = direction * 360.0
+            shifted_coords[coord_idx] = (shifted_coords[coord_idx][0] - cross_shift, shifted_coords[coord_idx][1])
+    
+    translated_polygon = Polygon(shifted_coords)
+    
+    minx = maxx = shifted_coords[0][0]
+    
+    for coord in shifted_coords: 
+        if coord[0] < minx: minx = coord[0]
+        if coord[0] > maxx: maxx = coord[0]
+    
+    am_lons = set() 
+    if minx < -180.0: 
+        am_lons.add(-180.0)
+    if maxx > 180.0: 
+        am_lons.add(180.0)
+    
+    if len(am_lons) > 1:
+        raise ValueError("Cannot split polygon along multiple meridians")
+    am_lon = next(iter(am_lons)) 
+
+    splitter = LineString([[am_lon, -90.0], [am_lon, 90.0]])
+    split_polygons = split(translated_polygon, splitter) 
+    return split_polygons
+
+def translate_polygon_to_valid_geography(polygon): 
+    (minx, _, maxx, _) = polygon.bounds
+    if minx < -180.0:
+        geo_polygon = affinity.translate(polygon, xoff=360)
+    elif maxx > 180.0: 
+        geo_polygon = affinity.translate(polygon, xoff=-360)
+    else:
+        geo_polygon = polygon
+    return geo_polygon
+
+def line_crosses_am(pt1, pt2): 
+    return abs(pt1[0]-pt2[0]) > 180.0 
+    
+def polygon_crosses_am(geometry): 
+    coords = get_coordinates(geometry)
+    for idx, c in enumerate(coords): 
+        if line_crosses_am(c, coords[idx-1]):
+            return True
+    return False
+
+def split_am_crossing_polygons(gdf, am_crossing_label):
+    gdf = label_am_crossings(gdf, am_crossing_label) 
+    origin_crs = gdf.crs # we need to reset the CRS at the end, so grab it now
+    to_split = gdf[gdf[am_crossing_label]] # select the subset that need splitting
+    new_geos = []
+    idx_to_rm = []
+    for idx, row in to_split.iterrows(): 
+        split_polys = split_am_polygon(row['geometry'])
+        for polygon in split_polys.geoms: 
+            new_row = row.copy() # copy all info 
+            new_row["geometry"] = translate_polygon_to_valid_geography(polygon)
+            new_geos.append(new_row)
+            idx_to_rm.append(idx)
+    gdf = gdf.drop(idx_to_rm) # drop the old, invalid polygons
+    gdf = gdf._append(new_geos, ignore_index=True) # add in the split polygons
+    gdf = gdf.drop(columns=[am_crossing_label]) # remove the crossing label, we don't need it anymore
+    gdf = gdf.set_crs(origin_crs) # reset the CRS without reprojecting
+    return gdf
+
 
 def label_am_crossings(gdf, am_crossing_label): 
     """
@@ -858,18 +944,16 @@ def label_am_crossings(gdf, am_crossing_label):
         am_crossing_label: str
             The label to use for the new column, which is a bool series
     """
-    def crosses_am(geometry): 
-        coords = get_coordinates(geometry)
-        for idx, c in enumerate(coords): 
-            if abs(c[0] - coords[idx-1][0]) > 180.0:
-                return True
-        return False
+    
+    if gdf.crs != "EPSG:4326":
+        logger.warn("antimeridian splitting is only supported for EPSG:4326")
+        return gdf
  
-    gdf[am_crossing_label] = gdf['geometry'].apply(crosses_am)
+    gdf[am_crossing_label] = gdf['geometry'].apply(polygon_crosses_am)
     return gdf
 
 
-def clean_viz_fields(gdf, non_viz_fields): 
+def clean_viz_fields(gdf, stats): 
     """
         Given a GeoDataFrame and a list of fields that are NOT to be vizualized, clean all the fields
         not specified as non_viz_fields of NaN and -inf values. 
@@ -879,13 +963,11 @@ def clean_viz_fields(gdf, non_viz_fields):
         gdf: GeoDataFrame
             The GDF to clean
         
-        non_viz_fields: list of str
-            The fields to LEAVE INTACT with NaN/-inf values
+        stats: list of str
+            The fields being visualized, which will be cleaned of invalid vals
     """
-    cols = gdf.columns 
-    viz_fields = [col for col in cols if col not in non_viz_fields]
-    for f in viz_fields:
-        gdf[f] = gdf[f].fillna(0)
+    logger.info(f"dropping rows with NaN and -inf values in the following fields: {stats}")
+    gdf = gdf.dropna(subset=stats)
     return gdf
 
 def clip_to_footprint(gdf, fp, duplicated_prop_name):

@@ -1,7 +1,8 @@
 import geopandas as gpd
 import geopandas.testing as gpd_test
-from shapely import Polygon, MultiPolygon, Point
-from pdgstaging.TileStager import clip_to_footprint, clean_viz_fields, label_am_crossings
+from shapely import Polygon, MultiPolygon, Point, GeometryCollection
+from shapely.testing import assert_geometries_equal
+from pdgstaging.TileStager import * 
 
 def test_clip_to_footprint():        
     tests = {
@@ -79,13 +80,13 @@ def test_clean_viz_fields():
                        "geometry": [Point(40.761513963876396, -73.97749285407829), Point(40.7833708203463, -73.95905025242519)],
                        "some_viz_field": [None, 1.0],
                        "non_viz_field": [None, None]})
-    non_viz_fields = ["non_viz_field"]
-    want = gpd.GeoDataFrame({"name": ["MoMA", "Guggenheim"], 
-                       "geometry": [Point(40.761513963876396, -73.97749285407829), Point(40.7833708203463, -73.95905025242519)],
-                       "some_viz_field": [0.0, 1.0],
-                       "non_viz_field": [None, None]})
-    res = clean_viz_fields(gdf, non_viz_fields)
-    gpd_test.assert_geodataframe_equal(res, want)
+    stats = ["some_viz_field"]
+    want = gpd.GeoDataFrame({"name": ["Guggenheim"], 
+                       "geometry": [Point(40.7833708203463, -73.95905025242519)],
+                       "some_viz_field": [1.0],
+                       "non_viz_field": [None]})
+    res = clean_viz_fields(gdf, stats)
+    gpd_test.assert_geodataframe_equal(res.reset_index(drop=True), want.reset_index(drop=True))
 
 def test_label_am_crossings(): 
     gdf = gpd.GeoDataFrame(
@@ -93,7 +94,7 @@ def test_label_am_crossings():
             "geometry": [
             Polygon([(178, 80), (-178, 80), (-178, 65), (178, 65)]),
             Polygon([(170, 80), (178, 80), (178, 65), (170, 65)]),
-            ]},
+            ]}, crs="EPSG:4326",
     )
     label = "crosses_am"
     want = gpd.GeoDataFrame(
@@ -103,7 +104,56 @@ def test_label_am_crossings():
             Polygon([(170, 80), (178, 80), (178, 65), (170, 65)]),
             ],
             "crosses_am": [True, False]},
+            crs="EPSG:4326",
     )
 
     res = label_am_crossings(gdf, label)
+    gpd_test.assert_geodataframe_equal(res, want)
+
+def test_split_am_polygon():
+    tests = {
+        "test1": {
+            "polygon": Polygon([(178, 80), (-178, 80), (-178, 65), (178, 65)]),
+            "want_polygons": GeometryCollection([
+                Polygon([(178, 80), (180, 80), (180, 65), (178, 65)]),
+                Polygon([(180, 80), (182, 80), (182, 65), (180, 65)]),
+            ])
+        }, 
+        "test2": {
+            "polygon": Polygon([(-178, 80), (178, 80), (178, 65), (-178, 65)]),
+            "want_polygons": GeometryCollection([
+                Polygon([(-180, 80), (-178, 80), (-178, 65), (-180, 65)]),
+                Polygon([(-180, 65), (-182, 65),(-182, 80),(-180, 80) ]),
+            ])
+        }
+    }
+    for _, test in tests.items(): 
+        got = split_am_polygon(test["polygon"])
+        print(got)
+        assert_geometries_equal(got, test["want_polygons"]) 
+
+def test_split_am_crossing_polygons(): 
+    gdf = gpd.GeoDataFrame(
+        {"name": ["cross1", "nocross1", "cross2"],
+            "geometry": [
+            Polygon([(178, 80), (-178, 80), (-178, 65), (178, 65)]),
+            Polygon([(170, 80), (178, 80), (178, 65), (170, 65)]),
+Polygon([(-178, 80), (178, 80), (178, 65), (-178, 65)]),
+            ]}, crs="EPSG:4326",
+    )
+    label = "crosses_am"
+    want = gpd.GeoDataFrame(
+        {"name": ["nocross1", "cross1", "cross1", "cross2", "cross2"],
+            "geometry": [
+                Polygon([(170, 80), (178, 80), (178, 65), (170, 65)]),
+                Polygon([(178, 80), (180, 80), (180, 65), (178, 65)]),
+                Polygon([(-180, 80), (-178, 80), (-178, 65), (-180, 65)]),
+                Polygon([(-180, 80), (-178, 80), (-178, 65), (-180, 65)]),
+                Polygon([(180, 65), (178, 65),(178, 80),(180, 80) ]),
+            ]},
+            crs="EPSG:4326",
+    )
+
+    res = split_am_crossing_polygons(gdf, label)
+    print(res.difference(want))
     gpd_test.assert_geodataframe_equal(res, want)
