@@ -1,4 +1,4 @@
-# Viz-staging: vector staging for the Permafrost Discovery Gateway visualization pipeline
+# Viz-staging: vector data tiling for geospatial visualization
 
 - **Authors**: Robyn Thiessen-Bock ; Juliet Cohen ; Matthew B. Jones ; Kastan Day ; Lauren Walker
 - **DOI**: [10.18739/A2RV0D26C](https://ezid.cdlib.org/id/doi:10.18739/A2RV0D26C)
@@ -14,7 +14,7 @@ The `pdgstaging` package divides vector files into tiled vector files according 
 
 Cite this software as:
 
-> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker. 2023. Viz-staging: vector staging for the Permafrost Discovery Gateway visualization pipeline (version 0.9.1). Arctic Data Center. doi: 10.18739/A2RV0D26C
+> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker. 2023. Viz-staging: vector data tiling for geospatial visualization (version 0.9.1). Arctic Data Center. doi: 10.18739/A2RV0D26C
 
 ## Install
 
