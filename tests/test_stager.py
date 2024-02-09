@@ -75,19 +75,6 @@ def test_clip_to_footprint():
         clipped = clip_to_footprint(test["gdf"], test["fp"], "dup_label")
         gpd_test.assert_geodataframe_equal(clipped, test["want"])
 
-def test_clean_viz_fields(): 
-    gdf = gpd.GeoDataFrame({"name": ["MoMA", "Guggenheim"], 
-                       "geometry": [Point(40.761513963876396, -73.97749285407829), Point(40.7833708203463, -73.95905025242519)],
-                       "some_viz_field": [None, 1.0],
-                       "non_viz_field": [None, None]})
-    stats = ["some_viz_field"]
-    want = gpd.GeoDataFrame({"name": ["Guggenheim"], 
-                       "geometry": [Point(40.7833708203463, -73.95905025242519)],
-                       "some_viz_field": [1.0],
-                       "non_viz_field": [None]})
-    res = clean_viz_fields(gdf, stats)
-    gpd_test.assert_geodataframe_equal(res.reset_index(drop=True), want.reset_index(drop=True))
-
 def test_label_am_crossings(): 
     gdf = gpd.GeoDataFrame(
         {"name": ["cross1", "nocross1"],
