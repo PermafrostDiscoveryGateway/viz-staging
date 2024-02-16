@@ -133,6 +133,7 @@ class TileStager():
         gdf = gdf[gdf.geometry.type == 'Polygon']
 
         if (gdf is not None) and (len(gdf) > 0):
+            gdf = self.clean_viz_fields(gdf)
             gdf = self.simplify_geoms(gdf)
             # clip to footprint before CRS of IWP data is transformed
             # to EPSG:4326
@@ -170,12 +171,12 @@ class TileStager():
         """
 
         # check if the config is set to clip to footprint
-        should_clip_to_footprint = self.config.get('deduplicate_clip_to_footprint')
-        logger.info(f"clip_to_footprint is {should_clip_to_footprint}")
+        clip_to_footprint = self.config.get('deduplicate_clip_to_footprint')
+        logger.info(f"clip_to_footprint is {clip_to_footprint}")
         # check if the config is set to label duplicates
         dedup = self.config.get('deduplicate_method')
         # if the config is set to do so, clip to footprint
-        if should_clip_to_footprint == True and dedup is not None:
+        if clip_to_footprint == True and dedup is not None:
             logger.info(f' Starting clipping_to_footprint() for file {path}.')
             # pull in footprint as a gdf called fp
             fp_path = self.config.footprint_path_from_input(path, check_exists=True)
@@ -787,6 +788,11 @@ class TileStager():
             )
         )
     
+    def clean_viz_fields(self, gdf):
+        stats = self.config.get("statistics")
+        stat_names = [stat["name"] for stat in stats]
+        return clean_viz_fields(gdf, stat_names)
+
     def check_footprints(self):
         """
         Check if all the footprint files exist.
@@ -980,6 +986,23 @@ def label_am_crossings(gdf, am_crossing_label):
     gdf[am_crossing_label] = gdf['geometry'].apply(polygon_crosses_am)
     return gdf
 
+
+def clean_viz_fields(gdf, stats): 
+    """
+        Given a GeoDataFrame and a list of fields that are NOT to be vizualized, clean all the fields
+        not specified as non_viz_fields of NaN and -inf values. 
+
+        Parameters
+        ----------
+        gdf: GeoDataFrame
+            The GDF to clean
+        
+        stats: list of str
+            The fields being visualized, which will be cleaned of invalid vals
+    """
+    logger.info(f"dropping rows with NaN and -inf values in the following fields: {stats}")
+    gdf = gdf.dropna(subset=stats)
+    return gdf
 
 def clip_to_footprint(gdf, fp, duplicated_prop_name):
     """
