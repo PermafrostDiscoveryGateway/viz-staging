@@ -133,7 +133,6 @@ class TileStager():
         gdf = gdf[gdf.geometry.type == 'Polygon']
 
         if (gdf is not None) and (len(gdf) > 0):
-            gdf = self.clean_viz_fields(gdf)
             gdf = self.simplify_geoms(gdf)
             # clip to footprint before CRS of IWP data is transformed
             # to EPSG:4326
@@ -142,6 +141,7 @@ class TileStager():
             gdf = self.split_am_crossing_polygons(gdf)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
+            gdf = self.clean_viz_fields(gdf)
             self.save_tiles(gdf)
         else:
             logger.warning(f'No features in {path}')
@@ -790,7 +790,7 @@ class TileStager():
     
     def clean_viz_fields(self, gdf):
         stats = self.config.get("statistics")
-        stat_names = [stat["name"] for stat in stats]
+        stat_names = [stat["property"] for stat in stats]
         return clean_viz_fields(gdf, stat_names)
 
     def check_footprints(self):
@@ -989,7 +989,7 @@ def label_am_crossings(gdf, am_crossing_label):
 
 def clean_viz_fields(gdf, stats): 
     """
-        Given a GeoDataFrame and a list of fields that are NOT to be vizualized, clean all the fields
+        Given a GeoDataFrame and a list of fields that are to be vizualized, clean all the fields
         not specified as non_viz_fields of NaN and -inf values. 
 
         Parameters
@@ -1000,7 +1000,11 @@ def clean_viz_fields(gdf, stats):
         stats: list of str
             The fields being visualized, which will be cleaned of invalid vals
     """
-    logger.info(f"dropping rows with NaN and -inf values in the following fields: {stats}")
+    logger.info(f"dropping rows with NaN and inf values in the following fields: {stats}")
+    import pdb
+    pdb.set_trace()
+    for stat in stats:
+        gdf[stat] = gdf[stat].replace(to_replace=[np.inf, -np.inf], value=np.nan)
     gdf = gdf.dropna(subset=stats)
     return gdf
 
