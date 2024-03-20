@@ -23,7 +23,7 @@ classifiers=[
 [tool.poetry.dependencies]
 python = ">=3.9"
 numpy = ">=1.2"
-pandas = ">=1.4, < 2.0"
+pandas = ">=1.4"
 shapely = ">= 2, < 3.0"
 geopandas = ">= 0.12.2, < 1.0"
 morecantile = ">= 3.1, < 4.0"
