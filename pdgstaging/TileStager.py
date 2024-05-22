@@ -1,5 +1,4 @@
-import logging
-from . import logging_config
+from logging import getLogger
 import os
 import uuid
 import warnings
@@ -13,7 +12,7 @@ from filelock import FileLock
 from . import ConfigManager, TilePathManager, TMSGrid
 from .Deduplicator import clip_gdf
 
-logger = logging_config.logger
+logger = getLogger(__name__).logger
 
 
 class TileStager():

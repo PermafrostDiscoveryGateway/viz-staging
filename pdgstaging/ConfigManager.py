@@ -1,6 +1,5 @@
 import json
-import logging
-from . import logging_config
+from logging import getLogger
 import os
 from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
 from .TilePathManager import TilePathManager
@@ -8,7 +7,7 @@ import warnings
 from coloraide import Color
 import colormaps as cmaps
 
-logger = logging_config.logger
+logger = getLogger(__name__).logger
 
 
 class ConfigManager():

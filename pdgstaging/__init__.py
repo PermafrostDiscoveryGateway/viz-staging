@@ -3,3 +3,6 @@ from .Grid import TMSGrid
 from .TilePathManager import TilePathManager
 from .TileStager import TileStager
 from .Deduplicator import *
+import logging
+
+logger = logging.getLogger(__name__)

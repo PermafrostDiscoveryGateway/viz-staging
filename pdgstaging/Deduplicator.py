@@ -4,17 +4,17 @@ import pandas as pd
 import uuid
 import itertools
 import warnings
+from logging import getLogger
 
 import os
 from datetime import datetime
 import numpy as np
 from filelock import FileLock
-import logging
-from . import logging_config
+
 # NOTE: DO NOT IMPORT ConfigManager, TilePathManager, Grid
 # because causes config import error for rasterization step 
 
-logger = logging_config.logger
+logger = getLogger(__name__).logger
 
 
 def keep_rules_to_sort_order(keep_rules):
