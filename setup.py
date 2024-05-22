@@ -22,7 +22,13 @@ setup(
         'Rtree >= 0.9, < 1.0',
         'filelock >= 3.6, < 4.0',
         'coloraide >= 0.10, < 1',
-        'colormaps == 0.4.0'
+        'colormaps == 0.4.0',
+
+        # Transitive dependancies below this line; we don't support breaking changes in
+        # these releases yet.
+        'pydantic < 2',
+        'fiona < 1.9',
+
     ],
     python_requires='>=3.9, <4.0',
     classifiers=[
