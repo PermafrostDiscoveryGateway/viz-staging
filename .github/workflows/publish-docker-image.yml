@@ -2,7 +2,7 @@ name: "Build and publish container image"
 
 on:
   workflow_dispatch:
-	push:
+  push:
     branches:
       - "main"
     tags:
