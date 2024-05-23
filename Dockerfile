@@ -1,19 +1,25 @@
-FROM python:3.9-alpine
+# Use the official Python 3.9 base image
+FROM python:3.9
 
 # Install transitive dependencies
-RUN apk update && apk add cmake alpine-sdk gdal proj
+RUN apt-get update && apt-get install -y libspatialindex-dev
 
-# Install libspatialindex
-# https://libspatialindex.org/en/latest/install.html
-# TODO: Can we install with Conda?
-#       https://anaconda.org/conda-forge/libspatialindex
-RUN git clone https://github.com/libspatialindex/libspatialindex.git
-WORKDIR libspatialindex
-RUN cmake -DCMAKE_INSTALL_PREFIX=/usr \
- && make \
- && make install
+# Install GDAL and PROJ libraries
+RUN apt-get install -y gdal-bin libgdal-dev proj-bin libproj-dev
 
-# Install pdgstaging
-# TODO: If we make pdg-staging conda-installable, we can install gdal, proj,
-#       and libspatialindex that way too.
+# Set environment variables for GDAL
+ENV GDAL_CONFIG=/usr/bin/gdal-config
+ENV GDAL_VERSION=3.8
+ENV PROJ_DIR=/usr
+
+# Install specific version of Fiona
+RUN pip install fiona==1.8.21
+
+# Install pdgstaging from GitHub repo using pip
 RUN pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# Set the working directory
+WORKDIR /app
+
+# Default command to execute when the container starts
+CMD ["python3"]
