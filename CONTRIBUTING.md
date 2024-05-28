@@ -19,8 +19,6 @@ bug reports, documentation, graphics, and many others.  You might consider contr
 - Fix a bug and contribute the code with a Pull Request
 - Write or edit some documentation
 - Sharing helpful tips or FAQ-type answers to users or future contributors
-- Create screenshots or tutorials of features of MetacatUI
-- Answer questions on DataONE Discussions
 - ...
 
 This is an open source project, and we welcome full
