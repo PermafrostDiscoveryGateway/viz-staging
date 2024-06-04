@@ -275,9 +275,7 @@ class ConfigManager():
                     the intersecting polygons to be considered a duplicate. If
                     False, then the overlap_tolerance proportion must be True
                     for only one of the intersecting polygons to be considered
-                    a duplicate. Default is True. Note that with release 0.9.0, 
-                    the 'neighbor' method has been not been thoroughly tested 
-                    and should not be applied to input data.
+                    a duplicate. Default is True.
                 - deduplicate_centroid_tolerance : float, optional
                     For the 'neighbor' deduplication method only. The maximum
                     distance between the centroids of two polygons to be
@@ -299,8 +297,8 @@ class ConfigManager():
                 - deduplicate_clip_to_footprint : bool, optional
                     For the 'footprints' deduplication method only. If True,
                     then polygons that fall outside the bounds of the
-                    associated footprint will be removed. Default is True for
-                    release version 0.9.0, but will be false for future releases.
+                    associated footprint will be removed. Default is True for this
+                    release, but will be false for future releases.
                 - deduplicate_clip_method: str, optional
                     For the 'footprints' deduplication method only, when
                     deduplicate_clip_to_footprint is True. The method to use to

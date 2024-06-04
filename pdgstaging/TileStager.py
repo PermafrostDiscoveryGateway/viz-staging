@@ -130,8 +130,7 @@ class TileStager():
 
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
-            # clip to footprint before CRS of IWP data is transformed
-            # to EPSG:4326
+            # If clipping to footprint, do so before CRS is transformed
             gdf = self.clip_to_footprint(gdf, path)
             gdf = self.set_crs(gdf)
             self.grid = self.make_tms_grid(gdf)
@@ -177,19 +176,19 @@ class TileStager():
             fp = self.get_data(fp_path)
             logger.info(f' Checking CRSs of polygons and footprint.')
 
-            iwp_crs = gdf.crs
+            data_crs = gdf.crs
             fp_crs = fp.crs
 
-            if iwp_crs == fp_crs:
-                logger.info(f" CRSs match. They are both {iwp_crs}.")
+            if data_crs == fp_crs:
+                logger.info(f" CRSs match. They are both {data_crs}.")
             else:
-                logger.info(f" CRSs do not match.\n IWP's CRS is {iwp_crs}."
+                logger.info(f" CRSs do not match.\n Data's CRS is {data_crs}."
                             f" Footprint's CRS is {fp_crs}.")
                 # transform the footprint to the CRS of the polygon data
-                fp.to_crs(iwp_crs, inplace = True)
+                fp.to_crs(data_crs, inplace = True)
                 # check again
                 fp_crs_transformed = fp.crs
-                if iwp_crs == fp_crs_transformed:
+                if data_crs == fp_crs_transformed:
                     logger.info("Footprint CRS has been transformed to CRS of polygons.")
                 else:
                     logger.error("Failed to transform footprint CRS to CRS of polygons.")
@@ -505,8 +504,8 @@ class TileStager():
                     # no polygons will be labeled as duplicates or not.
                     # If deduplicating by footprint: 
                     # neither file has been clipped to footprint
-                    logger.info(f"Tile exists but dedup is not set to occur, so just "
-                                f"appending the polygons.")
+                    logger.info(f"Tile exists but dedup is not set to occur, so"
+                                f" appending polygons.")
                     
                     # Append to existing tile
                     mode = 'a'

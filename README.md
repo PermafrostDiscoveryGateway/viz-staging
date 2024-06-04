@@ -1,15 +1,27 @@
-# PDG Staging
+# Viz-staging: vector data tiling for geospatial visualization
 
-Divides vector files into tiled vector files according to a specified [OGC Two Dimensional Tile Matrix Set](http://docs.opengeospatial.org/is/17-083r2/17-083r2.html) in preparation for processing into other formats in the PDG workflow.
+- **Authors**: Robyn Thiessen-Bock ; Juliet Cohen ; Matthew B. Jones ; Kastan Day ; Lauren Walker
+- **DOI**: [10.18739/A2RV0D26C](https://ezid.cdlib.org/id/doi:10.18739/A2RV0D26C)
+- **License**: [Apache 2](https://opensource.org/license/apache-2-0/)
+- [Package source code on GitHub](https://github.com/PermafrostDiscoveryGateway/viz-staging)
+- [Submit bugs and feature requests](https://github.com/PermafrostDiscoveryGateway/viz-staging/issues/new)
+
+The `pdgstaging` package divides vector files into tiled vector files according to a specified [OGC Two Dimensional Tile Matrix Set](http://docs.opengeospatial.org/is/17-083r2/17-083r2.html) in preparation for processing into other formats in the Permafrost Discovery Gateway (PDG) workflow.
 
 ![PDG staging summary](docs/images/staging_tldr.png)
 
+## Citation
+
+Cite this software as:
+
+> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker. 2023. Viz-staging: vector data tiling for geospatial visualization (version 0.9.1). Arctic Data Center. doi: 10.18739/A2RV0D26C
+
 ## Install
 
-Requires Python version `3.9` and `libspatialindex` or `libspatialindex-dev`
+Requires Python version `3.9` or `3.10` and `libspatialindex` or `libspatialindex-dev`
 
 1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
-2. Make sure that Python version 3.9 is installed (try `which python3.9`).
+2. Make sure that Python version 3.9 or 3.10 is installed (try `which python3.9`).
 3. Install `pdgstaging` from GitHub repo using pip: `pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git`
 
 ## Usage
@@ -20,6 +32,7 @@ Requires Python version `3.9` and `libspatialindex` or `libspatialindex-dev`
 - run: `python -m pdgstaging -c '/path/to/config.json'`
 
 **In python:**
+
 ```python
 import pdgstaging
 stager = pdgstaging.TileStager('/path/to/config.json')
@@ -28,6 +41,8 @@ stager.stage_all()
 # OR, to stage only one file
 stager.stage('path/to/input/file.shp')
 ```
+
+See more example code in [`PermafrostDiscoveryGateway/viz-info/helpful-code`](https://github.com/PermafrostDiscoveryGateway/viz-info/tree/main/helpful-code)
 
 ## Vector file staging for the PDG tiling pipeline
 
@@ -77,4 +92,30 @@ The staging process will also output a summary CSV file with one row for each ti
 - For release 0.9.0, the deduplication method `neighbors` has not been thoroughly tested. The deduplication method should be `None` or `footprints`.
 - If the deduplication method specified in the configuration is `footprints`, the footprint file(s) are provided with a structure that follows the [docs](https://github.com/PermafrostDiscoveryGateway/viz-staging/blob/main/docs/footprints.md).
 - In order for logging to work properly, the node running the script that uses this package has a `/tmp` directory so the `log.log` file can populate there.
+
+## Development
+
+Build and test using poetry and pytest.
+
+- To build, run `poetry build`
+- To test, run `pytest` from the root of the package directory
+- VS Code configuration is setup to configure tests as well
+
+## License
+
+```
+Copyright [2013] [Regents of the University of California]
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
 
