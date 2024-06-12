@@ -185,7 +185,17 @@ class ConfigManager():
                         aggregation method will be used to summarize the given
                         property in the cell. Method can be any method allowed
                         in the 'func' property of the panda's aggregate method,
-                        e.g. 'sum', 'count', 'mean', etc.
+                        e.g. 'sum', 'count', 'mean', etc., or 'bounded_count'.
+                        For 'bounded_count', a 'bounds' tuple is required and
+                        'weight_by' is ignored because 'count' is already
+                        implied.
+                    - bounds : tuple
+                        An upper and lower bound for the value of 'property'
+                        for the element to be included in the count. Only
+                        used if 'aggregation_method' is 'bounded_count'. If one
+                        of the bounds is None, the accepted values for
+                        'property' are unbounded in that direction. The upper
+                        bound is inclusive and the lower bound is exclusive.
                     - resampling_method : str
                         The resampling method to use when combining raster data
                         from child tiles into parent tiles. See rasterio's
@@ -1163,11 +1173,13 @@ class ConfigManager():
             'name',
             'weight_by',
             'property',
-            'aggregation_method')
+            'aggregation_method',
+            'bounds'
+        )
         stats_config = []
         for stat_config in self.config['statistics']:
             stats_config.append(
-                {k: stat_config[k] for k in stats_config_keys}
+                {k: stat_config[k] for k in stats_config_keys if k in stat_config}
             )
 
         raster_config = {
