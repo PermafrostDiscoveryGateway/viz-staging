@@ -122,6 +122,13 @@ class ConfigManager():
             - simplify_tolerance : float
                 The tolerance to use when simplifying the input polygons.
                 Defaults to 0.0001. Set to None to skip simplification.
+            - categorical_values: dict
+                A dictionary mapping from the names of peroperties in the input
+                dataset representing categorical values to the order that the
+                values can be sorted into in order to be represented with
+                evenly-spaced values. This will be stored in a new column in
+                the staged dataset, with the prefix 'staged_normalized_' added
+                to the property's original name.
 
         - Tiling & rasterization options.
             - tms_id : str
