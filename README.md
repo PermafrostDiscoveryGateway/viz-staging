@@ -1,7 +1,7 @@
 # Viz-staging: vector data tiling for geospatial visualization
 
 - **Authors**: Robyn Thiessen-Bock ; Juliet Cohen ; Matthew B. Jones ; Kastan Day ; Lauren Walker
-- **DOI**: [10.18739/A2RV0D26C](https://ezid.cdlib.org/id/doi:10.18739/A2RV0D26C)
+- **DOI**: [10.18739/A2Z60C395](https://ezid.cdlib.org/id/doi:10.18739/A2Z60C395)
 - **License**: [Apache 2](https://opensource.org/license/apache-2-0/)
 - [Package source code on GitHub](https://github.com/PermafrostDiscoveryGateway/viz-staging)
 - [Submit bugs and feature requests](https://github.com/PermafrostDiscoveryGateway/viz-staging/issues/new)
@@ -14,7 +14,7 @@ The `pdgstaging` package divides vector files into tiled vector files according 
 
 Cite this software as:
 
-> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker. 2023. Viz-staging: vector data tiling for geospatial visualization (version 0.9.1). Arctic Data Center. doi: 10.18739/A2RV0D26C
+> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker. 2023. Viz-staging: vector data tiling for geospatial visualization (version 0.9.2). Arctic Data Center. doi: 10.18739/A2Z60C395
 
 ## Install
 
@@ -89,7 +89,6 @@ The staging process will also output a summary CSV file with one row for each ti
 - It is assumed that incoming vector data comprises only valid polygons. **Any non-polygon data is removed**, including multi-polygons, points, lines, or other geometries.
 - It's also assumed that each incoming vector file is staged only once. If a file passes through the staging step twice, then all polygons from that file will be duplicated in the output (but with a different identifier). This is due to the fact that when a tile file already exists, additional polygons that belong to this tile will be appended to the file.
 - The input data does not contain `NaN` values or infinite values, or if the data does contain one of these, then the value is known. Failing to specify this value in the configuration cause issues later in the visualization pipeline.
-- For release 0.9.0, the deduplication method `neighbors` has not been thoroughly tested. The deduplication method should be `None` or `footprints`.
 - If the deduplication method specified in the configuration is `footprints`, the footprint file(s) are provided with a structure that follows the [docs](https://github.com/PermafrostDiscoveryGateway/viz-staging/blob/main/docs/footprints.md).
 - In order for logging to work properly, the node running the script that uses this package has a `/tmp` directory so the `log.log` file can populate there.
 
