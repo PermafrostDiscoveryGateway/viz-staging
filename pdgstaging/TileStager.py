@@ -135,6 +135,7 @@ class TileStager():
             gdf = self.set_crs(gdf)
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
+            gdf = self.normalize_categorical_values(gdf)
             self.save_tiles(gdf)
         else:
             logger.warning(f'No features in {path}')
@@ -421,6 +422,34 @@ class TileStager():
             how='left',
             predicate='intersects',
             as_tile=True)
+
+    def normalize_categorical_values(self, gdf):
+        """
+            Add a column converting each 'categorical_value' defined in the
+            config to an evenly-spaced set of values.
+
+            Parameters
+            ----------
+            gdf: GeoDataFrame
+                The GeoDataFrame to add normalize the values for.
+
+            Returns
+            -------
+            GeoDataFrame
+                The GeoDataFrame with the normalized values added as a new
+                column.
+        """
+        categorical_values = self.config.get('categorical_values')
+        for categorical_value in categorical_values.items():
+            prop = categorical_value[0]
+            order = categorical_value[1]
+            value_map = {}
+            i = 1
+            for element in order:
+                value_map[element] = i
+                i += 1
+            gdf['staged_normalized_' + prop] = gdf[prop].map(value_map)
+        return gdf
 
     def make_tms_grid(self, gdf):
         """
