@@ -3,6 +3,7 @@ import os
 import uuid
 import warnings
 from datetime import datetime
+from Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
 
 import geopandas as gpd
 import numpy as np
@@ -135,7 +136,15 @@ class TileStager:
         else:
             self.logger.warning(f"No features in {path}")
 
-    def clip_to_footprint(self, gdf, path):
+    def clip_to_footprint(
+        self,
+        gdf,
+        path,
+        clip_to_footprint=False,
+        dedup=None,
+        fp_path="footprints",
+        prop_duplicated="staging_duplicated",
+    ):
         """
         If the config is set to clip_to_footprint=True,
         and config is set to deduplicate at any step in the workflow,
@@ -152,6 +161,19 @@ class TileStager:
         path: string
             Path to the input file. This is used to retrieve the footprint.
 
+        clip_to_footprint: boolean
+            Flag to indicate if out of bounds geometries need to be clipped off.
+
+        dedup: string
+            The deduplication method for processing input geometries
+
+        fp_path: str
+            The path to the footprint file.
+
+        prop_duplicated : str
+            The name of the boolean property that indicates if a polygon
+            was identified as a duplicate or not
+
         Returns
         -------
         The GeodataFrame with polygons that fall outside
@@ -159,16 +181,12 @@ class TileStager:
 
         """
 
-        # check if the config is set to clip to footprint
-        clip_to_footprint = self.config.get("deduplicate_clip_to_footprint")
         self.logger.info(f"clip_to_footprint is {clip_to_footprint}")
         # check if the config is set to label duplicates
-        dedup = self.config.get("deduplicate_method")
         # if the config is set to do so, clip to footprint
         if clip_to_footprint == True and dedup is not None:
             self.logger.info(f" Starting clipping_to_footprint() for file {path}.")
             # pull in footprint as a gdf called fp
-            fp_path = self.config.footprint_path_from_input(path, check_exists=True)
             fp = self.get_data(fp_path)
             self.logger.info(f" Checking CRSs of polygons and footprint.")
 
@@ -198,7 +216,6 @@ class TileStager:
 
             # determine if polygons fall within or outside the footprint
             # first retrieve the name of the column we will use to label duplicates
-            prop_duplicated = self.config.polygon_prop("duplicated")
             gdf_with_labels = clip_gdf(
                 gdf=gdf.copy(),  # the gdf to clip
                 boundary=fp.copy(),  # the footprint
@@ -258,7 +275,7 @@ class TileStager:
 
         return gdf
 
-    def set_crs(self, gdf):
+    def set_crs(self, gdf, input_crs=None):
         """
         Set the CRS of the GeoDataFrame to the input CRS, if there is one.
         Re-project to the CRS of the TMS.
@@ -268,6 +285,12 @@ class TileStager:
         gdf : GeoDataFrame
             The GeoDataFrame to set the CRS of the Tile Matrix Set
 
+        input_crs : str
+            If the input data is lacking CRS information, then the CRS of
+            the input data. This will overwrite existing CRS data, if
+            GeoPandas detects any. Input data will not be reprojected to
+            this CRS.
+
         Returns
         -------
         GeoDataFrame
@@ -276,7 +299,6 @@ class TileStager:
         """
         start_time = datetime.now()
 
-        input_crs = self.config.get("input_crs")
         # assign the CRS of the TMS to `output_crs`
         output_crs = self.tiles.crs
 
@@ -305,7 +327,7 @@ class TileStager:
         )
         return gdf
 
-    def simplify_geoms(self, gdf):
+    def simplify_geoms(self, gdf, tolerance=None):
         """
         Simplify all geometries in a GeoDataFrame using the Douglas-Peucker
         algorithm
@@ -315,13 +337,16 @@ class TileStager:
         gdf : GeoDataFrame
             The GeoDataFrame to simplify
 
+        tolerance: : float
+            The tolerance to use when simplifying the input polygons.
+            Defaults to 0.0001. Set to None to skip simplification.
+
         Returns
         -------
         GeoDataFrame
             The GeoDataFrame with the simplified geometries
         """
         start_time = datetime.now()
-        tolerance = self.config.get("simplify_tolerance")
         if tolerance is not None:
             gdf["geometry"] = gdf["geometry"].simplify(tolerance)
             self.logger.info(
@@ -330,7 +355,7 @@ class TileStager:
             )
         return gdf
 
-    def add_properties(self, gdf, path=""):
+    def add_properties(self, gdf, path="", dir_input="input"):
         """
         Add area, centroid coordinates, filename, uuid to each polygon in
         the GeoDataFrame. Identify the tile that each polygon belongs to.
@@ -339,9 +364,13 @@ class TileStager:
         ----------
         gdf : GeoDataFrame
             The GeoDataFrame to add the tile properties to
+
         path : str
             The path to the vector file that the GeoDataFrame originated
             from (used for the filename)
+
+        dir_input : str
+            The directory to read input vector files from.
 
         Returns
         -------
@@ -365,7 +394,6 @@ class TileStager:
         gdf[props["centroid_y"]] = centroids.y
 
         # Add source file path, excluding the input dir and any leading slashes
-        dir_input = self.config.get("dir_input")
         gdf[props["filename"]] = path.removeprefix(dir_input).strip(os.sep)
 
         # Add identifier
@@ -439,7 +467,13 @@ class TileStager:
         grid.TILE_NAME = self.props["tile"]
         return grid
 
-    def save_tiles(self, gdf=None):
+    def save_tiles(
+        self,
+        gdf=None,
+        dedup=None,
+        deduplicate_at="staging",
+        prop_duplicated="staging_duplicated",
+    ):
         """
         Given a processed GeoDataFrame, save vectors into tiled vector
         files.
@@ -448,11 +482,29 @@ class TileStager:
         ----------
         gdf : GeoDataFrame
             The GeoDataFrame to save
+
+        dedup: string
+            The deduplication method for processing input geometries
+
+        deduplicate_at : str
+            Step at which de-duplication should occur
+
+        prop_duplicated : str
+            The name of the boolean property that indicates if a polygon
+            was identified as a duplicate or not
         """
 
         if gdf is None:
             # TODO give warning
             return None
+
+        if dedup is not None:
+            if dedup == "neighbors":
+                dedup_method = deduplicate_neighbors
+            if dedup == "footprints":
+                dedup_method = deduplicate_by_footprint
+        else:
+            dedup_method = None
 
         for tile, data in gdf.groupby(self.props["tile"]):
 
@@ -472,7 +524,6 @@ class TileStager:
             tile_strings = data[self.props["centroid_tile"]].astype("str")
             data[self.props["centroid_tile"]] = tile_strings
 
-            dedup_method = self.config.get_deduplication_method()
             if os.path.isfile(tile_path):
                 if dedup_method is not None:
                     # If the file exists and config is set to deduplicate
@@ -520,7 +571,7 @@ class TileStager:
                     )
             else:
                 if dedup_method is not None:
-                    if self.config.deduplicate_at("staging"):
+                    if deduplicate_at == "staging":
                         # If the file does not yet exist and the config is set to deduplicate
                         # at staging:
                         # If deduplicatinf by footprint:
@@ -537,7 +588,6 @@ class TileStager:
                             f"if deduplicating by neighbor if column already existed.\n "
                             f"Creating column with all false values it it did not exist."
                         )
-                        prop_duplicated = self.config.polygon_prop("duplicated")
                         self.logger.info(
                             f"Checking for presence of {prop_duplicated} column."
                         )
@@ -577,7 +627,6 @@ class TileStager:
                             f"Duplicates from `clip_gdf` were identified."
                         )
 
-                        prop_duplicated = self.config.polygon_prop("duplicated")
                         self.logger.info(
                             f"Checking for presence of {prop_duplicated} column."
                         )
@@ -676,7 +725,15 @@ class TileStager:
             self.logger.info(f"Saved {tile_path} in {datetime.now() - start_time}")
             self.__release_file(lock)
 
-    def combine_and_deduplicate(self, gdf, tile_path):
+    def combine_and_deduplicate(
+        self,
+        gdf,
+        tile_path,
+        dedup=None,
+        deduplicate_at="staging",
+        prop_duplicated="staging_duplicated",
+        dedup_config={},
+    ):
         """
         Combine existing data for a tile with the new data in a
         GeoDataFrame, label polygons as duplicates using one of
@@ -687,8 +744,22 @@ class TileStager:
         ----------
         gdf : GeoDataFrame
             The GeoDataFrame with new data to add to the existing tile
+
         tile_path : str
             The path to the existing data
+
+        dedup: str
+            The deduplication method for processing input geometries
+
+        deduplicate_at : str
+            Step at which de-duplication should occur
+
+        prop_duplicated : str
+            The name of the boolean property that indicates if a polygon
+            was identified as a duplicate or not
+
+        dedup_config : str
+            Config for constructing the deduplication object
 
         Returns
         -------
@@ -699,7 +770,14 @@ class TileStager:
 
         dedup_start_time = datetime.now()
 
-        dedup_method = self.config.get_deduplication_method()
+        if dedup is not None:
+            if dedup == "neighbors":
+                dedup_method = deduplicate_neighbors
+            if dedup == "footprints":
+                dedup_method = deduplicate_by_footprint
+        else:
+            dedup_method = None
+
         existing_gdf = gpd.read_file(tile_path)
 
         # Projection info can be lost during saving & reopening geopackage
@@ -716,7 +794,6 @@ class TileStager:
 
         gdf = pd.concat(to_concat, ignore_index=True)
         gdf.reset_index(drop=True, inplace=True)
-        dedup_config = self.config.get_deduplication_config(gdf)
 
         self.logger.info(
             f"Starting deduplication in tile {tile_path} with {len(gdf)} " "polygons."
@@ -726,8 +803,7 @@ class TileStager:
         gdf = dedup_method(gdf, **dedup_config)
 
         # drop duplicated polygons, if config is set to deduplicate here
-        if self.config.deduplicate_at("staging"):
-            prop_duplicated = self.config.polygon_prop("duplicated")
+        if deduplicate_at == "staging":
             if prop_duplicated in gdf.columns:
                 gdf = gdf[~gdf[prop_duplicated]]
 
@@ -758,7 +834,7 @@ class TileStager:
             "tile_left": bounds["left"],
         }
 
-    def summarize(self, gdf=None):
+    def summarize(self, gdf=None, summary_path="staging_summary.csv"):
         """
         For a given file, count how many vectors there are per tile, the
         area of vectors per tile, and get information about the tile itself
@@ -769,6 +845,10 @@ class TileStager:
         ----------
         gdf : GeoDataFrame
             The GeoDataFrame to summarize
+
+        summary_path : str
+            The path and filename to save a CSV file that summarizes the
+            tiled files that were created during the staging process.
         """
 
         if gdf is None:
@@ -801,7 +881,6 @@ class TileStager:
         gdf_summary = gdf_summary.drop(columns=["tile"])
 
         # Save the summary to a file
-        summary_path = self.config.get("filename_staging_summary")
         header = False
         mode = "a"
         if not os.path.isfile(summary_path):
