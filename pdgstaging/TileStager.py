@@ -1,5 +1,4 @@
 import logging
-from . import logging_config
 import os
 import uuid
 import warnings
@@ -9,11 +8,10 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from filelock import FileLock
+from typing import Optional
 
-from . import ConfigManager, TilePathManager, TMSGrid
+from . import TilePathManager, TMSGrid
 from .Deduplicator import clip_gdf
-
-logger = logging_config.logger
 
 
 class TileStager:
@@ -35,49 +33,51 @@ class TileStager:
             belong to the identified tile.
     """
 
-    def __init__(self, config=None, check_footprints=True):
+    def __init__(
+        self,
+        tiles: Optional[TilePathManager] = None,
+        props=[],
+        max_z_level=13,
+        tms_id="WGS1984Quad",
+        path_structure=["style", "tms", "z", "x", "y"],
+        base_dirs={},
+    ):
         """
         Initialize the TileStager object.
 
         Parameters
         ----------
-        config : dict
-            The configuration dictionary to use. If not provided,
-            the default configuration will be used.
+        tiles : TilePathManager, optional
+            An instance of TilePathManager (defaults to None)
 
-        check_footprints : bool
-            When True, upon initialization, checks that a footprint file
-            can be found for each of the input files when the
-            deduplicate_method is set to 'footprints'. If not, raises
-            an exception. Default is True.
+        props : list
+            A list of all the properties associated with the tiling data
+
+        max_z_level : int
+            The max z level for tiling the input data
+
+        tms_id : str
+            The tile matrix set id for constructing the tile path manager object
+
+        path_structure : list
+            The path structure used for generating the tiling output
+
+        base_dirs : dict
+            Directory structure and extenstions for storing the output
         """
-
-        self.config = ConfigManager(config)
-        self.tiles = TilePathManager(**self.config.get_path_manager_config())
-
-        if check_footprints and self.config.get("deduplicate_method") == "footprints":
-            logger.info("Checking for footprint files...")
-            missing = self.check_footprints()
-            num_missing = len(missing)
-            if 0 < num_missing < 20:
-                logger.warning(
-                    f"Missing footprint files for {num_missing} files: " f"{missing}"
-                )
-            elif num_missing > 20:
-                logger.warning(
-                    f"Missing footprint files for {num_missing} files: "
-                    f"{len(missing)}"
-                )
-                logger.warning(
-                    f"Printing first 30 missing footprint: " f"{missing[0:30]}"
-                )
+        self.logger = logging.getLogger(__name__)
 
         # Configured names of properties that will be added to each polygon
         # during either staging or rasterization
-        self.props = self.config.props
+        self.props = props
 
         # Create tiles for the maximum z-level configured
-        self.z_level = self.config.get_max_z()
+        self.z_level = max_z_level
+
+        if tiles is None:
+            self.tiles = self.set_tiling_config(tms_id, path_structure, base_dirs)
+        else:
+            self.tiles = tiles
 
         self.get_all_tile_properties = np.vectorize(
             self.get_tile_properties, otypes=[dict]
@@ -94,10 +94,10 @@ class TileStager:
         num_paths = len(input_paths)
 
         if num_paths == 0:
-            logger.error("No vector files found for staging.")
+            self.logger.error("No vector files found for staging.")
             return
 
-        logger.info(f"Begin staging {num_paths} input vector files. ")
+        self.logger.info(f"Begin staging {num_paths} input vector files. ")
 
         for path in input_paths:
             self.stage(path)
@@ -105,7 +105,7 @@ class TileStager:
         # Calculate the total time to stage all files
         total_time = datetime.now() - overall_start_time
         avg_time = total_time / num_paths
-        logger.info(
+        self.logger.info(
             f"Staged {num_paths} files in {total_time} "
             f"({avg_time} per file on average)"
         )
@@ -120,7 +120,7 @@ class TileStager:
             The path to the vector file to process and create tiles for.
         """
         gdf = self.get_data(path)
-        logger.info(f"Staging file {path}")
+        self.logger.info(f"Staging file {path}")
         # Remove any geometries that are not polygons
         gdf = gdf[gdf.geometry.type == "Polygon"]
 
@@ -133,7 +133,7 @@ class TileStager:
             gdf = self.add_properties(gdf, path)
             self.save_tiles(gdf)
         else:
-            logger.warning(f"No features in {path}")
+            self.logger.warning(f"No features in {path}")
 
     def clip_to_footprint(self, gdf, path):
         """
@@ -161,24 +161,24 @@ class TileStager:
 
         # check if the config is set to clip to footprint
         clip_to_footprint = self.config.get("deduplicate_clip_to_footprint")
-        logger.info(f"clip_to_footprint is {clip_to_footprint}")
+        self.logger.info(f"clip_to_footprint is {clip_to_footprint}")
         # check if the config is set to label duplicates
         dedup = self.config.get("deduplicate_method")
         # if the config is set to do so, clip to footprint
         if clip_to_footprint == True and dedup is not None:
-            logger.info(f" Starting clipping_to_footprint() for file {path}.")
+            self.logger.info(f" Starting clipping_to_footprint() for file {path}.")
             # pull in footprint as a gdf called fp
             fp_path = self.config.footprint_path_from_input(path, check_exists=True)
             fp = self.get_data(fp_path)
-            logger.info(f" Checking CRSs of polygons and footprint.")
+            self.logger.info(f" Checking CRSs of polygons and footprint.")
 
             data_crs = gdf.crs
             fp_crs = fp.crs
 
             if data_crs == fp_crs:
-                logger.info(f" CRSs match. They are both {data_crs}.")
+                self.logger.info(f" CRSs match. They are both {data_crs}.")
             else:
-                logger.info(
+                self.logger.info(
                     f" CRSs do not match.\n Data's CRS is {data_crs}."
                     f" Footprint's CRS is {fp_crs}."
                 )
@@ -187,11 +187,11 @@ class TileStager:
                 # check again
                 fp_crs_transformed = fp.crs
                 if data_crs == fp_crs_transformed:
-                    logger.info(
+                    self.logger.info(
                         "Footprint CRS has been transformed to CRS of polygons."
                     )
                 else:
-                    logger.error(
+                    self.logger.error(
                         "Failed to transform footprint CRS to CRS of polygons."
                     )
                     return
@@ -208,7 +208,7 @@ class TileStager:
 
             return gdf_with_labels
         else:
-            logger.info(
+            self.logger.info(
                 f" Either clip_to_footprint was set to False, or config"
                 f" was not set to deduplicate at any step. Returning original GDF"
                 f" without clipping to footprint."
@@ -231,13 +231,13 @@ class TileStager:
         """
 
         start_time = datetime.now()
-        logger.info(f"Reading vector file: {input_path}")
+        self.logger.info(f"Reading vector file: {input_path}")
         try:
             gdf = gpd.read_file(input_path)
         except FileNotFoundError:
             gdf = None
-            logger.warning(f"{input_path} not found. It will be skipped.")
-        logger.info(f"Read in {input_path} in {(datetime.now() - start_time)}")
+            self.logger.warning(f"{input_path} not found. It will be skipped.")
+        self.logger.info(f"Read in {input_path} in {(datetime.now() - start_time)}")
 
         # Check that none of the existing properties match the configured
         # properties that will be created. Finoa (used by geopandas) gives
@@ -253,7 +253,7 @@ class TileStager:
             error_msg += f"input vector file: {duplicated}"
             error_msg += "\nPlease remove them or change the configured "
             error_msg += "property names."
-            logger.error(error_msg)
+            self.logger.error(error_msg)
             raise ValueError(error_msg)
 
         return gdf
@@ -284,12 +284,12 @@ class TileStager:
         crs_in_input = gdf.crs
 
         if crs_in_input is not None:
-            logger.info(
+            self.logger.info(
                 f"CRS of input data is {crs_in_input}.\nIf input_crs is set in config,"
                 f" setting CRS to that."
             )
         else:
-            logger.info(
+            self.logger.info(
                 f"No CRS set in input data. Setting to input_crs specified in config."
             )
 
@@ -299,7 +299,7 @@ class TileStager:
         if output_crs:
             gdf.to_crs(output_crs, inplace=True)
 
-        logger.info(
+        self.logger.info(
             f"Re-projected {len(gdf.index)} polygons in "
             f"{datetime.now() - start_time}"
         )
@@ -324,7 +324,7 @@ class TileStager:
         tolerance = self.config.get("simplify_tolerance")
         if tolerance is not None:
             gdf["geometry"] = gdf["geometry"].simplify(tolerance)
-            logger.info(
+            self.logger.info(
                 f"Simplified {len(gdf.index)} polygons in "
                 f"{datetime.now() - start_time}"
             )
@@ -378,7 +378,7 @@ class TileStager:
         centroid_only = gdf[props["tile"]] == gdf[props["centroid_tile"]]
         gdf[props["centroid_within_tile"]] = centroid_only
 
-        logger.info(
+        self.logger.info(
             f"Added properties for {num_polygons} vectors in "
             f"{datetime.now() - start_time} from file {path}"
         )
@@ -465,7 +465,7 @@ class TileStager:
 
             # Track the start time, the tile, and the number of vectors
             start_time = datetime.now()
-            logger.info(f"Saving {len(data.index)} vectors to tile {tile_path}")
+            self.logger.info(f"Saving {len(data.index)} vectors to tile {tile_path}")
 
             # Tile must be a string for saving as attribute
             data[self.props["tile"]] = data[self.props["tile"]].astype("str")
@@ -483,7 +483,7 @@ class TileStager:
                     # the footprint were already labeled earlier).
                     # Then remove all the duplicated data if the config is
                     # set to remove duplicates during staging.
-                    logger.info(
+                    self.logger.info(
                         f"Tile exists and dedup is set to occur at some step,"
                         f" so executing `combine_and_deduplicate()`"
                     )
@@ -504,7 +504,7 @@ class TileStager:
                     # no polygons will be labeled as duplicates or not.
                     # If deduplicating by footprint:
                     # neither file has been clipped to footprint
-                    logger.info(
+                    self.logger.info(
                         f"Tile exists but dedup is not set to occur, so"
                         f" appending polygons."
                     )
@@ -530,7 +530,7 @@ class TileStager:
                         # If deduplicating by neighbor:
                         # the prop_duplicated col has not been created yet,
                         # so create it and set all values to False
-                        logger.info(
+                        self.logger.info(
                             f"Tile does not yet exist and config is set to deduplicate "
                             f"at staging, so removing polygons that fell outside the footprint "
                             f"if deduplicating by footpint, and removing overlapping polygons\n"
@@ -538,13 +538,13 @@ class TileStager:
                             f"Creating column with all false values it it did not exist."
                         )
                         prop_duplicated = self.config.polygon_prop("duplicated")
-                        logger.info(
+                        self.logger.info(
                             f"Checking for presence of {prop_duplicated} column."
                         )
                         if prop_duplicated in data.columns:
                             data = data[~data[prop_duplicated]]
                         else:
-                            logger.info(
+                            self.logger.info(
                                 f"Adding {prop_duplicated} column because property did not "
                                 f"already exist."
                             )
@@ -570,7 +570,7 @@ class TileStager:
                         # with all values set to false so all staged files have same properties.
                         # This will be overwritten if this file overlaps with others later,
                         # with combine_and_deduplicate().
-                        logger.info(
+                        self.logger.info(
                             f"Tile does not yet exist and config is set to deduplicate at a step "
                             f"after staging, so just saving the new tile."
                             f"\nIf deduplicating by footprint: "
@@ -578,17 +578,17 @@ class TileStager:
                         )
 
                         prop_duplicated = self.config.polygon_prop("duplicated")
-                        logger.info(
+                        self.logger.info(
                             f"Checking for presence of {prop_duplicated} column."
                         )
                         if prop_duplicated not in data.columns:
-                            logger.info(
+                            self.logger.info(
                                 f"Adding {prop_duplicated} column because property did not "
                                 f"already exist."
                             )
                             data[prop_duplicated] = False
                         else:
-                            logger.info(
+                            self.logger.info(
                                 f"Tile that did not yet exist did have "
                                 f"{prop_duplicated} column before saving."
                             )
@@ -607,7 +607,7 @@ class TileStager:
                     # If deduplicating by footprint:
                     # No duplicates were labeled earlier either,
                     # because the workflow did not check if any fell outside the footprint.
-                    logger.info(
+                    self.logger.info(
                         f"Tile does not yet exist and config is not set to deduplicate, so just "
                         f"saving the new tile.\nIf deduplicating by footprint:\n"
                         f"Duplicates from `clip_gdf` were not identified."
@@ -673,7 +673,7 @@ class TileStager:
             self.summarize(data)
         finally:
             # Track the end time, the total time, and the number of vectors
-            logger.info(f"Saved {tile_path} in {datetime.now() - start_time}")
+            self.logger.info(f"Saved {tile_path} in {datetime.now() - start_time}")
             self.__release_file(lock)
 
     def combine_and_deduplicate(self, gdf, tile_path):
@@ -718,7 +718,7 @@ class TileStager:
         gdf.reset_index(drop=True, inplace=True)
         dedup_config = self.config.get_deduplication_config(gdf)
 
-        logger.info(
+        self.logger.info(
             f"Starting deduplication in tile {tile_path} with {len(gdf)} " "polygons."
         )
 
@@ -731,7 +731,9 @@ class TileStager:
             if prop_duplicated in gdf.columns:
                 gdf = gdf[~gdf[prop_duplicated]]
 
-        logger.info(f"Finished deduplication in {datetime.now() - dedup_start_time}")
+        self.logger.info(
+            f"Finished deduplication in {datetime.now() - dedup_start_time}"
+        )
 
         return gdf
 
@@ -808,7 +810,7 @@ class TileStager:
         gdf_summary.to_csv(summary_path, mode=mode, index=False, header=header)
 
         # Log the total time to create the summary
-        logger.info(
+        self.logger.info(
             "Summarized Tile(z={}, x={}, y={}) in {}".format(
                 tile_props[0]["tile_z"],
                 tile_props[0]["tile_x"],
@@ -816,35 +818,6 @@ class TileStager:
                 (datetime.now() - start_time),
             )
         )
-
-    def check_footprints(self):
-        """
-        Check if all the footprint files exist.
-
-        Returns
-        -------
-        list of str
-            Returns a list of input filenames that are missing footprint files.
-            Returns an empty list if all footprint files exist.
-        """
-        missing_footprints = []
-        matching_footprints = []
-        input_paths = self.tiles.get_filenames_from_dir("input")
-        for path in input_paths:
-            try:
-                footprint = self.config.footprint_path_from_input(
-                    path, check_exists=True
-                )
-            except FileNotFoundError:
-                missing_footprints.append(path)
-            else:
-                matching_footprints.append(footprint)
-        num_missing = len(missing_footprints)
-        num_found = len(matching_footprints)
-        logger.info(
-            f"Found {num_found} matching footprints. " f"{num_missing} missing."
-        )
-        return missing_footprints
 
     def __lock_file(self, path):
         """
@@ -877,3 +850,73 @@ class TileStager:
         lock.release()
         if os.path.exists(lock.lock_file):
             os.remove(lock.lock_file)
+
+    def get_default_base_dir(self):
+        """
+        Returns the default base dir for the TPM class
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        base_dir : dictionary
+            Default base directory representing the TPM structure for the WGS1984Quad
+        """
+        tmp_base_dirs = {}
+
+        # Set up input base dirs and output for the raster base dir
+        tmp_base_dirs["input"] = {}
+        tmp_base_dirs["input"]["path"] = "input"
+        tmp_base_dirs["input"]["ext"] = ".shp"
+
+        tmp_base_dirs["staged"] = {}
+        tmp_base_dirs["staged"]["path"] = "staged"
+        tmp_base_dirs["staged"]["ext"] = ".gpkg"
+
+        return tmp_base_dirs
+
+    def set_tiling_config(
+        self,
+        tms_id="WGS1984Quad",
+        path_structure=["style", "tms", "z", "x", "y"],
+        base_dirs={},
+    ):
+        """
+        Updates the tiling config for the TilePathmanager class
+
+        Parameters
+        ----------
+        tms_id : str
+            The tile matrix set id for constructing the tile path manager object
+
+        path_structure : list
+            The path structure used for generating the tiling output
+
+        base_dirs : dict
+            Directory structure and extenstions for storing the output
+
+        Returns
+        -------
+        None
+        """
+        self.tms_id = tms_id
+        self.path_structure = path_structure
+
+        if not base_dirs:
+            self.base_dirs = self.get_default_base_dir()
+
+        for key, value in base_dirs.items():
+            if key in self.base_dirs:
+                self.base_dirs[key].update(value)
+            else:
+                self.base_dirs[key] = value
+
+        self.tiles = TilePathManager(
+            tms_id=self.tms_id,
+            path_structure=self.path_structrue,
+            base_dirs=self.base_dirs,
+        )
+
+        return None
