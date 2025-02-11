@@ -14,23 +14,18 @@ removed where there is a water body. In the workflow, we want to use the water
 masked version of the data over the unmasked version.
 """
 
-filename_path_list = 'input_paths.json'
+filename_path_list = "input_paths.json"
 
 # Will be prepended to all fo the main & preferred input dir paths
-base_dir = '/home/pdg/data/ice-wedge-polygon-data/version 01/'
+base_dir = "/home/pdg/data/ice-wedge-polygon-data/version 01/"
 
 # Directories that contain all the data
-main_dirs = [
-    'alaska',
-    'high_ice'
-]
+main_dirs = ["alaska", "high_ice"]
 
 # Directories that contain better/newer/more desired versions of the same data
 # in main dir
-preferred_dirs = [
-    'water_clipped'
-]
-ext = '.shp'
+preferred_dirs = ["water_clipped"]
+ext = ".shp"
 
 # Prepend the base dir
 main_dirs = [os.path.join(base_dir, d) for d in main_dirs]
@@ -59,7 +54,7 @@ for main_dir in main_dirs:
 # Extract just the filename and ext, not the path, from the main files
 main_file_basenames = [os.path.basename(f) for f in main_files]
 
-print(f'Found {len(main_files)} files with ext {ext} in main directories.')
+print(f"Found {len(main_files)} files with ext {ext} in main directories.")
 
 # Repeat the same process for the preferred directories
 preferred_files = []
@@ -69,8 +64,8 @@ for preferred_dir in preferred_dirs:
 preferred_files_basenames = [os.path.basename(f) for f in preferred_files]
 
 print(
-    f'Found {len(preferred_files)} files with ext {ext} in preferred '
-    f'directories.')
+    f"Found {len(preferred_files)} files with ext {ext} in preferred " f"directories."
+)
 
 # When a main file basename exists in the list of preferred files, replace
 # the main file path with the preferred file path
@@ -85,16 +80,17 @@ for main_file_basename in main_file_basenames:
         replacement_count += 1
 
 # Write the list of paths to a JSON file
-with open(filename_path_list, 'w') as f:
+with open(filename_path_list, "w") as f:
     json.dump(final_path_list, f)
 
-print(f'Wrote {len(final_path_list)} paths to {filename_path_list}.')
-print(f'Replaced {replacement_count} paths with the preferred version.')
+print(f"Wrote {len(final_path_list)} paths to {filename_path_list}.")
+print(f"Replaced {replacement_count} paths with the preferred version.")
 # Did all the preferred files exist in the main directories?
 if len(preferred_files) != replacement_count:
     print(
-        f'WARNING: There were {len(preferred_files)} preferred files, but '
-        f'only {replacement_count} main file paths were replaced.')
+        f"WARNING: There were {len(preferred_files)} preferred files, but "
+        f"only {replacement_count} main file paths were replaced."
+    )
 
 
 # #############################################################################
