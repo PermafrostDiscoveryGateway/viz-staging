@@ -66,7 +66,7 @@ class TileStager:
         base_dirs : dict
             Directory structure and extenstions for storing the output
         """
-        self.logger = logging.getLogger(__name__)
+        # self.logger = logging.getLogger(__name__)
 
         # Configured names of properties that will be added to each polygon
         # during either staging or rasterization
@@ -674,7 +674,7 @@ class TileStager:
     def save_new_tile(self, data, tile_path, mode, start_time, lock):
         """
         Save data as a new tile, if the tile does not already exist.
-        Adds a row to staging_summary.csv.
+        Adds a row to staging_summary.parquet.
 
         Parameters
         ----------
@@ -834,7 +834,7 @@ class TileStager:
             "tile_left": bounds["left"],
         }
 
-    def summarize(self, gdf=None, summary_path="staging_summary.csv"):
+    def summarize(self, gdf=None, summary_path="staging_summary.parquet"):
         """
         For a given file, count how many vectors there are per tile, the
         area of vectors per tile, and get information about the tile itself
@@ -847,7 +847,7 @@ class TileStager:
             The GeoDataFrame to summarize
 
         summary_path : str
-            The path and filename to save a CSV file that summarizes the
+            The path and filename to save a parquet file that summarizes the
             tiled files that were created during the staging process.
         """
 
@@ -886,7 +886,7 @@ class TileStager:
         if not os.path.isfile(summary_path):
             header = True
             mode = "w"
-        gdf_summary.to_csv(summary_path, mode=mode, index=False, header=header)
+        gdf_summary.to_parquet(summary_path, mode=mode, index=False, header=header)
 
         # Log the total time to create the summary
         self.logger.info(
