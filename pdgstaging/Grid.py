@@ -1116,7 +1116,7 @@ class TMSGrid(Grid):
 
         if as_tile:
             row_is, col_is = (array(gdf[ri]), array(gdf[ci]))
-            gdf[tn] = [self.tile_from_rc(r, c) for r, c in zip(row_is, col_is)]
+            gdf[tn] = [self.tile_from_rc(r.item(), c.item()) for r, c in zip(row_is, col_is)]
             gdf.drop(columns=[ci, ri], inplace=True)
             indexable_cols = tn
         else:
