@@ -75,7 +75,7 @@ After being run through this staging process, each polygon will be assigned the 
 
 ## Summary fields
 
-The staging process will also output a summary Parquet file with one row for each tile created from each file. The fields in the Parquet are:
+The staging process will also output a summary CSV file with one row for each tile created from each file. The fields in the CSV are:
 - **filename**: The path to the input vector file that was processed
 - **num_polygons**: The number of polygons from that file that are in given tile
 - **area_polygons**: The total area of the polygons from the file that are in the given tile
