@@ -726,7 +726,7 @@ class TileStager:
 
             # Record what was saved
             data[self.props["tile"]] = tiles_morecantile
-            summary_csv_path = self.config.get("filename_staging_summary")
+            summary_csv_path = "staging_summary.csv"
             self.summarize(data, summary_csv_path)
         finally:
             # Track the end time, the total time, and the number of vectors
@@ -1003,7 +1003,7 @@ class TileStager:
         This method is to converst the CSV files containing rasterization events and raster
         summaries to Parquet format, keeping the original CSVs.
         """
-        csv_path = self.config.get("filename_staging_summary")
+        csv_path = "staging_summary.csv"
 
         if not os.path.isfile(csv_path):
             self.logger.warning(f"CSV not found → {csv_path}")
