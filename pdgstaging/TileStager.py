@@ -3,7 +3,7 @@ import os
 import uuid
 import warnings
 from datetime import datetime
-from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
+from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint, clip_gdf
 
 import geopandas as gpd
 import numpy as np
@@ -14,7 +14,6 @@ from filelock import FileLock
 from typing import Optional
 
 from . import TilePathManager, TMSGrid
-from Deduplicator import clip_gdf
 
 
 class TileStager:
@@ -897,7 +896,6 @@ class TileStager:
             mode = "w"
         gdf_summary.to_csv(summary_path, mode=mode, index=False, header=header)
 
-
     def __lock_file(self, path):
         """
         Lock a file for writing.
@@ -999,7 +997,6 @@ class TileStager:
         )
 
         return None
-    
 
     def csv_to_parquet(self):
         """
@@ -1011,8 +1008,8 @@ class TileStager:
         if not os.path.isfile(csv_path):
             self.logger.warning(f"CSV not found → {csv_path}")
 
-        root, _ = os.path.splitext(csv_path) 
-        parquet_path = f"{root}.parquet"  
+        root, _ = os.path.splitext(csv_path)
+        parquet_path = f"{root}.parquet"
 
         self.logger.warning(f"Converting {csv_path} to {parquet_path}.")
 
@@ -1022,4 +1019,3 @@ class TileStager:
             parquet_path,
             compression="snappy",
         )
-
