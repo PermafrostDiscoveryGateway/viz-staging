@@ -3,7 +3,7 @@ import os
 import uuid
 import warnings
 from datetime import datetime
-from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
+from Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
 
 import geopandas as gpd
 import numpy as np
@@ -14,7 +14,7 @@ from filelock import FileLock
 from typing import Optional
 
 from . import TilePathManager, TMSGrid
-from Deduplicator import clip_gdf
+from .Deduplicator import clip_gdf
 
 
 class TileStager:
@@ -43,8 +43,7 @@ class TileStager:
         max_z_level=13,
         tms_id="WGS1984Quad",
         path_structure=["style", "tms", "z", "x", "y"],
-        base_dirs={},
-        config: dict = None,
+        base_dirs={}
     ):
         """
         Initialize the TileStager object.
@@ -86,7 +85,6 @@ class TileStager:
         self.get_all_tile_properties = np.vectorize(
             self.get_tile_properties, otypes=[dict]
         )
-        self.config = config or {}
 
     def stage_all(self):
         """
@@ -727,7 +725,7 @@ class TileStager:
 
             # Record what was saved
             data[self.props["tile"]] = tiles_morecantile
-            summary_csv_path = self.config.get("filename_staging_summary")
+            summary_csv_path = "filename_staging_summary.csv"
             self.summarize(data, summary_csv_path)
         finally:
             # Track the end time, the total time, and the number of vectors
@@ -1006,7 +1004,7 @@ class TileStager:
         This method is to converst the CSV files containing rasterization events and raster
         summaries to Parquet format, keeping the original CSVs.
         """
-        csv_path = self.config.get("filename_staging_summary")
+        csv_path = "staging_summary.csv"
 
         if not os.path.isfile(csv_path):
             self.logger.warning(f"CSV not found → {csv_path}")
@@ -1022,4 +1020,3 @@ class TileStager:
             parquet_path,
             compression="snappy",
         )
-
