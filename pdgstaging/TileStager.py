@@ -3,16 +3,17 @@ import os
 import uuid
 import warnings
 from datetime import datetime
-from Deduplicator import deduplicate_neighbors, deduplicate_by_footprint
+from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint, clip_gdf
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from filelock import FileLock
 from typing import Optional
 
 from . import TilePathManager, TMSGrid
-from .Deduplicator import clip_gdf
 
 
 class TileStager:
@@ -41,7 +42,7 @@ class TileStager:
         max_z_level=13,
         tms_id="WGS1984Quad",
         path_structure=["style", "tms", "z", "x", "y"],
-        base_dirs={},
+        base_dirs={}
     ):
         """
         Initialize the TileStager object.
@@ -80,6 +81,10 @@ class TileStager:
         else:
             self.tiles = tiles
 
+        staged_root = self.tiles.base_dirs["staged"]["path"]
+        summary_root  = os.path.dirname(staged_root) 
+        self.summary_path = os.path.join(summary_root, "staging_summary.csv")
+
         self.get_all_tile_properties = np.vectorize(
             self.get_tile_properties, otypes=[dict]
         )
@@ -102,6 +107,10 @@ class TileStager:
 
         for path in input_paths:
             self.stage(path)
+        try:
+            self.csv_to_parquet()
+        except Exception:
+            self.logger.exception("Failed to convert CSVs to Parquet")
 
         # Calculate the total time to stage all files
         total_time = datetime.now() - overall_start_time
@@ -674,7 +683,7 @@ class TileStager:
     def save_new_tile(self, data, tile_path, mode, start_time, lock):
         """
         Save data as a new tile, if the tile does not already exist.
-        Adds a row to staging_summary.csv.
+        Adds a row to staging_summary.csv
 
         Parameters
         ----------
@@ -719,7 +728,8 @@ class TileStager:
 
             # Record what was saved
             data[self.props["tile"]] = tiles_morecantile
-            self.summarize(data)
+            summary_csv_path =  self.summary_path
+            self.summarize(data, summary_csv_path)
         finally:
             # Track the end time, the total time, and the number of vectors
             self.logger.info(f"Saved {tile_path} in {datetime.now() - start_time}")
@@ -888,16 +898,6 @@ class TileStager:
             mode = "w"
         gdf_summary.to_csv(summary_path, mode=mode, index=False, header=header)
 
-        # Log the total time to create the summary
-        self.logger.info(
-            "Summarized Tile(z={}, x={}, y={}) in {}".format(
-                tile_props[0]["tile_z"],
-                tile_props[0]["tile_x"],
-                tile_props[0]["tile_y"],
-                (datetime.now() - start_time),
-            )
-        )
-
     def __lock_file(self, path):
         """
         Lock a file for writing.
@@ -999,3 +999,25 @@ class TileStager:
         )
 
         return None
+
+    def csv_to_parquet(self):
+        """
+        This method is to converst the CSV files containing rasterization events and raster
+        summaries to Parquet format, keeping the original CSVs.
+        """
+        csv_path = self.summary_path
+
+        if not os.path.isfile(csv_path):
+            self.logger.warning(f"CSV not found → {csv_path}")
+
+        root, _ = os.path.splitext(csv_path)
+        parquet_path = f"{root}.parquet"
+
+        self.logger.warning(f"Converting {csv_path} to {parquet_path}.")
+
+        df = pd.read_csv(csv_path)
+        pq.write_table(
+            pa.Table.from_pandas(df, preserve_index=False),
+            parquet_path,
+            compression="snappy",
+        )
