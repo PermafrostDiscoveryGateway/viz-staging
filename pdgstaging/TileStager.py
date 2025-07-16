@@ -42,8 +42,7 @@ class TileStager:
         max_z_level=13,
         tms_id="WGS1984Quad",
         path_structure=["style", "tms", "z", "x", "y"],
-        base_dirs={},
-        config: dict = None,
+        base_dirs={}
     ):
         """
         Initialize the TileStager object.
@@ -82,10 +81,13 @@ class TileStager:
         else:
             self.tiles = tiles
 
+        staged_root = self.tiles.base_dirs["staged"]["path"]
+        summary_root  = os.path.dirname(staged_root) 
+        self.summary_path = os.path.join(summary_root, "staging_summary.csv")
+
         self.get_all_tile_properties = np.vectorize(
             self.get_tile_properties, otypes=[dict]
         )
-        self.config = config or {}
 
     def stage_all(self):
         """
@@ -726,7 +728,7 @@ class TileStager:
 
             # Record what was saved
             data[self.props["tile"]] = tiles_morecantile
-            summary_csv_path = "staging_summary.csv"
+            summary_csv_path =  self.summary_path
             self.summarize(data, summary_csv_path)
         finally:
             # Track the end time, the total time, and the number of vectors
@@ -1003,7 +1005,7 @@ class TileStager:
         This method is to converst the CSV files containing rasterization events and raster
         summaries to Parquet format, keeping the original CSVs.
         """
-        csv_path = "staging_summary.csv"
+        csv_path = self.summary_path
 
         if not os.path.isfile(csv_path):
             self.logger.warning(f"CSV not found → {csv_path}")
