@@ -132,7 +132,7 @@ class TileStager:
         gdf = self.get_data(path)
         self.logger.info(f"Staging file {path}")
         # Remove any geometries that are not polygons
-        gdf = gdf[gdf.geometry.type == "Polygon"]
+        gdf = gdf[gdf.geometry.type.isin(['Polygon', 'MultiPolygon'])]
 
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
