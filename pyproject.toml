@@ -1,4 +1,4 @@
-[tool.poetry]
+[project]
 name = "pdgstaging"
 version = "0.9.2"
 description = "Geospatial data tiling workflow"
