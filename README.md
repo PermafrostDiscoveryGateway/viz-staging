@@ -20,9 +20,88 @@ Cite this software as:
 
 Requires Python version `3.9` or `3.10` and `libspatialindex` or `libspatialindex-dev`
 
+### Prerequisites
+
 1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
 2. Make sure that Python version 3.9 or 3.10 is installed (try `which python3.9`).
-3. Install `pdgstaging` from GitHub repo using pip: `pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git`
+
+### Installation Options
+
+#### Option 1: Using uv (recommended)
+
+Install `pdgstaging` from GitHub repo using uv:
+
+```bash
+# Install the package
+uv pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# Or install with development dependencies
+uv pip install "git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git[dev]"
+```
+
+#### Option 2: Using pip
+
+Install `pdgstaging` from GitHub repo using pip:
+
+```bash
+# Install the package
+pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# Or install with development dependencies
+pip install "git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git[dev]"
+```
+
+#### Option 3: Using a virtual environment
+
+If you prefer to use a virtual environment:
+
+```bash
+# Create and activate a virtual environment
+python3.9 -m venv venv
+source venv/bin/activate  # On macOS/Linux
+# or
+venv\Scripts\activate     # On Windows
+
+# Install with uv
+uv pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# Or install with pip
+pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# To deactivate the virtual environment when done
+deactivate
+```
+
+#### For Development
+
+If you're developing this package, clone the repository and install in editable mode:
+
+```bash
+# Clone the repository
+git clone https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+cd viz-staging
+
+# Option 1: Using uv with virtual environment
+python3.9 -m venv venv
+source venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Option 2: Using pip with virtual environment
+python3.9 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+
+# Option 3: Direct installation with uv (creates managed environment)
+uv pip install -e ".[dev]"
+
+# Option 4: Direct installation with pip
+pip install -e ".[dev]"
+```
+
+The development dependencies include:
+- `pytest >= 7` - for running tests
+- `black >= 24.1.1` - for code formatting
+- `pre-commit >= 3.5.0` - for pre-commit hooks
 
 ## Usage
 
@@ -94,10 +173,10 @@ The staging process will also output a summary CSV file with one row for each ti
 
 ## Development
 
-Build and test using poetry and pytest.
+Build and test using standard Python tools.
 
-- To build, run `poetry build`
 - To test, run `pytest` from the root of the package directory
+- To format code, run `black .`
 - VS Code configuration is setup to configure tests as well
 
 ## License
