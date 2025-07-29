@@ -81,20 +81,25 @@ If you're developing this package, clone the repository and install in editable 
 git clone https://github.com/PermafrostDiscoveryGateway/viz-staging.git
 cd viz-staging
 
-# Option 1: Using uv with virtual environment
+# Option 1: Using uv to create and manage virtual environment
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Option 2: Using uv with custom virtual environment
 python3.9 -m venv venv
 source venv/bin/activate
 uv pip install -e ".[dev]"
 
-# Option 2: Using pip with virtual environment
+# Option 3: Using pip with virtual environment
 python3.9 -m venv venv
 source venv/bin/activate
 pip install -e ".[dev]"
 
-# Option 3: Direct installation with uv (creates managed environment)
+# Option 4: Direct installation with uv (creates managed environment)
 uv pip install -e ".[dev]"
 
-# Option 4: Direct installation with pip
+# Option 5: Direct installation with pip
 pip install -e ".[dev]"
 ```
 
