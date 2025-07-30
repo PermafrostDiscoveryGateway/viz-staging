@@ -1,11 +1,15 @@
 FROM python:3.9-slim
 
-# Install transitive dependencies
+# Install transitive dependencies and build tools
 RUN apt-get update \
-    && apt-get install -y git libspatialindex-dev libgdal-dev libproj-dev
+    && apt-get install -y git libspatialindex-dev libgdal-dev libproj-dev build-essential g++ \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install pdgstaging from GitHub repo
-RUN pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+# Install uv
+RUN pip install uv
+
+# Install pdgstaging from GitHub repo using uv
+RUN uv pip install --system git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git@feature-tiling-k8s
 
 WORKDIR /app
 
