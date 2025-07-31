@@ -948,8 +948,8 @@ class TMSGrid(Grid):
         LL_EPSILON = 1e-11
 
         if west > east:
-            bbox_west = (tms.bbox.left, south, east, north)
-            bbox_east = (west, south, tms.bbox.right, north)
+            bbox_west = (tms.xy_bbox.left, south, east, north)
+            bbox_east = (west, south, tms.xy_bbox.right, north)
             bboxes = [bbox_west, bbox_east]
         else:
             bboxes = [(west, south, east, north)]
@@ -965,16 +965,16 @@ class TMSGrid(Grid):
         for w, s, e, n in bboxes:
 
             # Clamp bounding values.
-            w = max(tms.bbox.left, w)
-            s = max(tms.bbox.bottom, s)
-            e = min(tms.bbox.right, e)
-            n = min(tms.bbox.top, n)
+            w = max(tms.xy_bbox.left, w)
+            s = max(tms.xy_bbox.bottom, s)
+            e = min(tms.xy_bbox.right, e)
+            n = min(tms.xy_bbox.top, n)
 
-            ul_tile = tms.tile(w + LL_EPSILON, n - LL_EPSILON, z)
-            lr_tile = tms.tile(e - LL_EPSILON, s + LL_EPSILON, z)
+            ul_tile = tms._tile(w + LL_EPSILON, n - LL_EPSILON, z)
+            lr_tile = tms._tile(e - LL_EPSILON, s + LL_EPSILON, z)
 
-            ul_tile_bounds = tms.bounds(ul_tile)
-            lr_tile_bounds = tms.bounds(lr_tile)
+            ul_tile_bounds = tms.xy_bounds(ul_tile)
+            lr_tile_bounds = tms.xy_bounds(lr_tile)
 
             top_limits.append(ul_tile_bounds.top)
             bottom_limits.append(lr_tile_bounds.bottom)

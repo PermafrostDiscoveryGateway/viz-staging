@@ -24,12 +24,11 @@ dependencies = [
     "pandas >= 1.5.3, < 2.0",
     "shapely >= 2, < 3.0",
     "geopandas >= 0.12.2, < 1.0",
-    "morecantile >= 3.1, < 4.0",
+    "morecantile",
     "Rtree",
     "filelock >= 3.6, < 4.0",
     "coloraide >= 0.10, < 1",
     "colormaps == 0.4.0",
-    "pydantic == 1.10.9",
     "pyarrow",
 ]
 

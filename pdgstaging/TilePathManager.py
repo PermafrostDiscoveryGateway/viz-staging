@@ -684,7 +684,7 @@ class TilePathManager:
         if tile is None:
             raise ValueError("A tile is required to get the bounding box")
 
-        bounding_box = self.tms.bounds(tile)
+        bounding_box = self.tms.xy_bounds(tile)
 
         if as_dict:
             bounding_box = {
