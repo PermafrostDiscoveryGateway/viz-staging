@@ -42,7 +42,7 @@ class TileStager:
         max_z_level=13,
         tms_id="WGS1984Quad",
         path_structure=["style", "tms", "z", "x", "y"],
-        base_dirs={}
+        base_dirs={},
     ):
         """
         Initialize the TileStager object.
@@ -82,7 +82,7 @@ class TileStager:
             self.tiles = tiles
 
         staged_root = self.tiles.base_dirs["staged"]["path"]
-        summary_root  = os.path.dirname(staged_root) 
+        summary_root = os.path.dirname(staged_root)
         self.summary_path = os.path.join(summary_root, "staging_summary.csv")
 
         self.get_all_tile_properties = np.vectorize(
@@ -132,7 +132,7 @@ class TileStager:
         gdf = self.get_data(path)
         self.logger.info(f"Staging file {path}")
         # Remove any geometries that are not polygons
-        gdf = gdf[gdf.geometry.type.isin(['Polygon', 'MultiPolygon'])]
+        gdf = gdf[gdf.geometry.type.isin(["Polygon", "MultiPolygon"])]
 
         if (gdf is not None) and (len(gdf) > 0):
             gdf = self.simplify_geoms(gdf)
@@ -728,7 +728,7 @@ class TileStager:
 
             # Record what was saved
             data[self.props["tile"]] = tiles_morecantile
-            summary_csv_path =  self.summary_path
+            summary_csv_path = self.summary_path
             self.summarize(data, summary_csv_path)
         finally:
             # Track the end time, the total time, and the number of vectors

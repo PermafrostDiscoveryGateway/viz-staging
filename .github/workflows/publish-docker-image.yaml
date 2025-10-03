@@ -5,13 +5,13 @@ on:
   push:
     branches:
       - "main"
+      - "feature-tiling-k8s"
     tags:
       - "[0-9]+.[0-9]+.[0-9]+*"
 
 
 env:
   REGISTRY: "ghcr.io"
-  IMAGE_NAME: "${{ github.repository_owner }}/pdgstaging"
   IMAGE_TAG: "${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}"
 
 
@@ -28,6 +28,10 @@ jobs:
     steps:
       - name: "Check out repository"
         uses: "actions/checkout@v3"
+
+      - name: "Set IMAGE_NAME with lowercase repository owner"
+        run: |
+          echo "IMAGE_NAME=$(echo '${{ github.repository_owner }}/pdgstaging' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: "Build container image"
         run: |
