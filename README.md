@@ -108,25 +108,7 @@ The development dependencies include:
 - `black >= 24.1.1` - for code formatting
 - `pre-commit >= 3.5.0` - for pre-commit hooks
 
-## Usage
-
-4. Create a config JSON file for the staging job, see [the docs](docs/config.md) for details, `help(pdgstaging.ConfigManager)` for all configuration options, and `pdgstaging.ConfigManager.defaults` for default config values.
-
-**From the command line:**
-- run: `python -m pdgstaging -c '/path/to/config.json'`
-
-**In python:**
-
-```python
-import pdgstaging
-stager = pdgstaging.TileStager('/path/to/config.json')
-stager.stage_all()
-
-# OR, to stage only one file
-stager.stage('path/to/input/file.shp')
-```
-
-See more example code in [`PermafrostDiscoveryGateway/viz-info/helpful-code`](https://github.com/PermafrostDiscoveryGateway/viz-info/tree/main/helpful-code)
+See example code in [`PermafrostDiscoveryGateway/viz-info/helpful-code`](https://github.com/PermafrostDiscoveryGateway/viz-info/tree/main/helpful-code)
 
 ## Vector file staging for the PDG tiling pipeline
 
