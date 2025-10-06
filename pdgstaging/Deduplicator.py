@@ -5,16 +5,12 @@ import uuid
 import itertools
 import warnings
 
-import os
 from datetime import datetime
 import numpy as np
 from filelock import FileLock
 import logging
-from . import logging_config
-# NOTE: DO NOT IMPORT ConfigManager, TilePathManager, Grid
-# because causes config import error for rasterization step 
 
-logger = logging_config.logger
+logger = logging.getLogger(__name__)
 
 
 def keep_rules_to_sort_order(keep_rules):
@@ -38,54 +34,56 @@ def keep_rules_to_sort_order(keep_rules):
         sort_values function.
     """
     sort_props = [x[0] for x in keep_rules]
-    sort_order = [x[1] == 'smaller' for x in keep_rules]
+    sort_order = [x[1] == "smaller" for x in keep_rules]
     return sort_props, sort_order
 
-def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated = None):
+
+def clip_gdf(gdf=None, boundary=None, method="intersects", prop_duplicated=None):
     """
-        Remove polygons from a GeoDataFrame that fall outside of some boundary.
-        Determine if the polygons in the GeoDataFrame are within the boundary
-        by using an sjoin operation, with a specified method.
+    Remove polygons from a GeoDataFrame that fall outside of some boundary.
+    Determine if the polygons in the GeoDataFrame are within the boundary
+    by using an sjoin operation, with a specified method.
 
-        Parameters
-        ----------
-        gdf : GeoDataFrame
-            The GeoDataFrame to clip.
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        The GeoDataFrame to clip.
 
-        boundary : GeoDataFrame
-            A GeoDataFrame that contains polygons representing the boundaries.
+    boundary : GeoDataFrame
+        A GeoDataFrame that contains polygons representing the boundaries.
 
-        method : str
-            The predicate to use for the sjoin operation. Can be one of:
-            'contains', 'contains_properly', 'covers', 'crosses', 'intersects',
-            'overlaps', 'touches', 'within' (any option listed by
-            geopandas.GeoDataFrame.sindex.valid_query_predicates)
+    method : str
+        The predicate to use for the sjoin operation. Can be one of:
+        'contains', 'contains_properly', 'covers', 'crosses', 'intersects',
+        'overlaps', 'touches', 'within' (any option listed by
+        geopandas.GeoDataFrame.sindex.valid_query_predicates)
 
-        Returns
-        -------
-            A dictionary containing the clipped GeoDataFrame (the value of the
-            'to_keep' key), and the GeoDataFrame of polygons that were removed
-            (the value of the 'to_remove' key).
+    Returns
+    -------
+        A dictionary containing the clipped GeoDataFrame (the value of the
+        'to_keep' key), and the GeoDataFrame of polygons that were removed
+        (the value of the 'to_remove' key).
 
     """
 
     # Temporary property to use during the sjoin
-    # assigns an identifier to 
-    prop_in_fp_temp = 'WITHIN_BOUNDARY_' + uuid.uuid4().hex
+    # assigns an identifier to
+    prop_in_fp_temp = "WITHIN_BOUNDARY_" + uuid.uuid4().hex
 
     # define the boundary as the footprint gdf's geometry column
-    boundary = boundary.copy().filter(['geometry'])
+    boundary = boundary.copy().filter(["geometry"])
 
     boundary[prop_in_fp_temp] = True
     # use sjoin to determine if the polygons are within the footprint
     # then drop the column called `index_right`
-    gdf = gdf.sjoin(boundary, how='left', predicate=method) \
-             .drop(['index_right'], axis=1)
+    gdf = gdf.sjoin(boundary, how="left", predicate=method).drop(
+        ["index_right"], axis=1
+    )
 
     # create a gdf called `within` that contains only the gdf rows where the
     # values in prop_in_fp_temp are not null (are within the footprint)
     within = gdf[gdf[prop_in_fp_temp].notnull()]
-    # drop the column from `within` object that's used 
+    # drop the column from `within` object that's used
     # to identify polys that fall outside the footprint
     within = within.drop([prop_in_fp_temp], axis=1)
 
@@ -98,8 +96,8 @@ def clip_gdf(gdf = None, boundary = None, method = 'intersects', prop_duplicated
     within[prop_duplicated] = False
 
     # stack the gdf's
-    gdf_with_labels = pd.concat([outside, within], ignore_index = True)
-    gdf_with_labels.reset_index(drop = True, inplace = True)
+    gdf_with_labels = pd.concat([outside, within], ignore_index=True)
+    gdf_with_labels.reset_index(drop=True, inplace=True)
 
     return gdf_with_labels
 
@@ -114,131 +112,129 @@ def deduplicate_neighbors(
     overlap_tolerance=0.5,
     overlap_both=True,
     centroid_tolerance=None,
-    distance_crs='EPSG:3857',
+    distance_crs="EPSG:3857",
     return_intersections=False,
-    prop_duplicated='staging_duplicated'
-     # defaults to these options only if aren't already specified in config
+    prop_duplicated="staging_duplicated",
+    # defaults to these options only if aren't already specified in config
 ):
     """
 
-    Identify duplicated polygons from two sources in a single GeoDataFrame, even
-    when geometries are not identical.
+     Identify duplicated polygons from two sources in a single GeoDataFrame, even
+     when geometries are not identical.
 
-    Two polygons are considered duplicates of one another when they:
-        1. have a different value for a specific property (e.g. 'source_file'),
-           AND
-        2. are overlapping, AND
-        3. have centroids within a given distance, OR
-        4. at least a certain proportion of one or both polygons is overlapped
-           by the other
+     Two polygons are considered duplicates of one another when they:
+         1. have a different value for a specific property (e.g. 'source_file'),
+            AND
+         2. are overlapping, AND
+         3. have centroids within a given distance, OR
+         4. at least a certain proportion of one or both polygons is overlapped
+            by the other
 
-   The deduplication can be set to ignore centroid distance or ignore the
-   overlap proportion.
+    The deduplication can be set to ignore centroid distance or ignore the
+    overlap proportion.
 
-    When two polygons are identified as duplicates, only one is kept in the returned 'to_keep'
-    dataframe. Which one is kept is determined by the 'keep_rules' parameter,
-    which indicates the property to compare, and the rule to apply ('larger' or
-    'smaller'). For example, to keep the newest polygon, set a keep_rule for a
-    more recent date property, e.g. ('Date', 'larger').
+     When two polygons are identified as duplicates, only one is kept in the returned 'to_keep'
+     dataframe. Which one is kept is determined by the 'keep_rules' parameter,
+     which indicates the property to compare, and the rule to apply ('larger' or
+     'smaller'). For example, to keep the newest polygon, set a keep_rule for a
+     more recent date property, e.g. ('Date', 'larger').
 
-    A dictionary is returned with the deduplicated GeoDataFrame ('to_keep'), the
-    GeoDataFrame with the dropped duplicates ('to_remove'), and optionally, the
-    intersection geometries of duplicated polygons ('intersections').
+     A dictionary is returned with the deduplicated GeoDataFrame ('to_keep'), the
+     GeoDataFrame with the dropped duplicates ('to_remove'), and optionally, the
+     intersection geometries of duplicated polygons ('intersections').
 
-    Parameters
-    ----------
-    gdf : GeoDataFrame
-        The GeoDataFrame to deduplicate.
-    split_by : str
-        The name of the property in the GeoDataFrame to use to identify
-        duplicated polygons. Two polygons must have a different value for this
-        property to be considered duplicated. e.g. 'source_file.' Every
-        pairwise combination of unique values for this property will be
-        compared, so ideally, this property should not have too many unique
-        values, or the deduplication will be very slow.
-    prop_area : str, optional
-        If the area has already been calculated for the GeoDataFrame, give the
-        name of the property containing the area. Area must be in the same unit
-        as the CRS of the GeoDataFrame. If set to None, the area will be
-        calculated.
-    prop_centroid_x : str, optional
-        If the centroid has already been calculated for the GeoDataFrame, give
-        the name of the property containing the centroid x-coordinate. Centroid
-        coordinates must be in the same CRS of the GeoDataFrame. If set to
-        None, the centroid will be calculated.
-    prop_centroid_y : str, optional
-        If the centroid has already been calculated for the GeoDataFrame, give
-        the name of the property containing the centroid y-coordinate. Centroid
-        coordinates must be in the same CRS of the GeoDataFrame. If set to
-        None, the centroid will be calculated.
-    keep_rules : list, optional
-        Rules that define which of the polygons to keep when two or more are
-        duplicates. A list of tuples of the form (property, operator), where
-        property is the name of a property in the GDF to use for the
-        comparison. The operator is either 'larger' or 'smaller'. If the rule
-        is 'larger', the polygons with the largest value for the property will
-        be kept. If the rule is 'smaller', the polygon with the smallest value
-        for the property will be kept. When two properties are equal, then the
-        next property in the list will be checked.
-    overlap_tolerance : float, optional
-        The minimum proportion of a polygon's area that must be overlapped by
-        another polygon to be considered a duplicate. Default is 0.5. Set to
-        None to ignore overlap proportions when comparing polygons, and set a
-        centroid threshold instead. Note that both an overlap_tolerance AND a
-        centroid_tolerance can be used.
-    overlap_both : bool, optional
-        If True, then the overlap_tolerance proportion must be True for both of
-        the intersecting polygons to be considered a duplicate. If False, then
-        the overlap_tolerance proportion must be True for only one of the
-        intersecting polygons to be considered a duplicate. Default is True.
-    centroid_tolerance : float, optional
-        The maximum distance between the centroids of two polygons to be
-        considered a duplicate. Default is None. Set to None to ignore centroid
-        distances when comparing polygons, and set an overlap threshold
-        instead. Note that both an overlap_tolerance AND a centroid_tolerance
-        can be used. The unit of the distance is the unit of the distance_crs
-        property (e.g. meters for EPSG:3857), or the unit of the GeoDataFrame
-        if distance_crs is None.
-    distance_crs : str, optional
-        The CRS to use for the centroid distance calculation. Default is
-        EPSG:3857. Centroid points will be re-projected to this CRS before
-        calculating the distance between them. centroid_tolerance will use the
-        units of this CRS. Set to None to skip the re-projection and use the
-        CRS of the GeoDataFrame.
-    return_intersections : bool, optional
-        If True, the GeoDataFrame with the intersection geometries is returned
-        in addition to the GeoDataFrames with the deduplicated and removed
-        geometries. Default is False. This option is not currently available in
-        this release.
-    prop_duplicated : str, optional
-        Defaults to "staging_duplicated". The column name / property to use to flag
-        duplicates when label is True.
+     Parameters
+     ----------
+     gdf : GeoDataFrame
+         The GeoDataFrame to deduplicate.
+     split_by : str
+         The name of the property in the GeoDataFrame to use to identify
+         duplicated polygons. Two polygons must have a different value for this
+         property to be considered duplicated. e.g. 'source_file.' Every
+         pairwise combination of unique values for this property will be
+         compared, so ideally, this property should not have too many unique
+         values, or the deduplication will be very slow.
+     prop_area : str, optional
+         If the area has already been calculated for the GeoDataFrame, give the
+         name of the property containing the area. Area must be in the same unit
+         as the CRS of the GeoDataFrame. If set to None, the area will be
+         calculated.
+     prop_centroid_x : str, optional
+         If the centroid has already been calculated for the GeoDataFrame, give
+         the name of the property containing the centroid x-coordinate. Centroid
+         coordinates must be in the same CRS of the GeoDataFrame. If set to
+         None, the centroid will be calculated.
+     prop_centroid_y : str, optional
+         If the centroid has already been calculated for the GeoDataFrame, give
+         the name of the property containing the centroid y-coordinate. Centroid
+         coordinates must be in the same CRS of the GeoDataFrame. If set to
+         None, the centroid will be calculated.
+     keep_rules : list, optional
+         Rules that define which of the polygons to keep when two or more are
+         duplicates. A list of tuples of the form (property, operator), where
+         property is the name of a property in the GDF to use for the
+         comparison. The operator is either 'larger' or 'smaller'. If the rule
+         is 'larger', the polygons with the largest value for the property will
+         be kept. If the rule is 'smaller', the polygon with the smallest value
+         for the property will be kept. When two properties are equal, then the
+         next property in the list will be checked.
+     overlap_tolerance : float, optional
+         The minimum proportion of a polygon's area that must be overlapped by
+         another polygon to be considered a duplicate. Default is 0.5. Set to
+         None to ignore overlap proportions when comparing polygons, and set a
+         centroid threshold instead. Note that both an overlap_tolerance AND a
+         centroid_tolerance can be used.
+     overlap_both : bool, optional
+         If True, then the overlap_tolerance proportion must be True for both of
+         the intersecting polygons to be considered a duplicate. If False, then
+         the overlap_tolerance proportion must be True for only one of the
+         intersecting polygons to be considered a duplicate. Default is True.
+     centroid_tolerance : float, optional
+         The maximum distance between the centroids of two polygons to be
+         considered a duplicate. Default is None. Set to None to ignore centroid
+         distances when comparing polygons, and set an overlap threshold
+         instead. Note that both an overlap_tolerance AND a centroid_tolerance
+         can be used. The unit of the distance is the unit of the distance_crs
+         property (e.g. meters for EPSG:3857), or the unit of the GeoDataFrame
+         if distance_crs is None.
+     distance_crs : str, optional
+         The CRS to use for the centroid distance calculation. Default is
+         EPSG:3857. Centroid points will be re-projected to this CRS before
+         calculating the distance between them. centroid_tolerance will use the
+         units of this CRS. Set to None to skip the re-projection and use the
+         CRS of the GeoDataFrame.
+     return_intersections : bool, optional
+         If True, the GeoDataFrame with the intersection geometries is returned
+         in addition to the GeoDataFrames with the deduplicated and removed
+         geometries. Default is False. This option is not currently available in
+         this release.
+     prop_duplicated : str, optional
+         Defaults to "staging_duplicated". The column name / property to use to flag
+         duplicates when label is True.
 
-    Returns
-    -------
-    GeoDataFrame
-        Returns the input GDF with the polygons flagged as duplicates. 
-        Duplicates are marked as True in the prop_duplicated column.
+     Returns
+     -------
+     GeoDataFrame
+         Returns the input GDF with the polygons flagged as duplicates.
+         Duplicates are marked as True in the prop_duplicated column.
 
-        'intersections' represents the GeoDataFrame with the intersections. 
-        It has not been integrated into the function again since the deduplication 
-        approach changed from returning a dictionary to returning a labeled GDF.
+         'intersections' represents the GeoDataFrame with the intersections.
+         It has not been integrated into the function again since the deduplication
+         approach changed from returning a dictionary to returning a labeled GDF.
     """
 
     if split_by is None:
-        raise ValueError('An overlap property must be specified for '
-                         'deduplication.')
+        raise ValueError("An overlap property must be specified for " "deduplication.")
 
     if (keep_rules is None) or (len(keep_rules) == 0):
-        raise ValueError('A list of keep rules must be specified for '
-                         'deduplication.')
+        raise ValueError("A list of keep rules must be specified for " "deduplication.")
 
     # Use uuid for the properties that will be temporarily created so they do
     # not conflict with existing properties
     rand_id = uuid.uuid4().hex
-    prop_int_area = 'intersect_area_' + rand_id
-    prop_int_id = 'intersect_id_' + rand_id
-    prop_id = 'temp_id_' + rand_id
+    prop_int_area = "intersect_area_" + rand_id
+    prop_int_id = "intersect_id_" + rand_id
+    prop_id = "temp_id_" + rand_id
 
     gdf = gdf.copy()
 
@@ -257,16 +253,16 @@ def deduplicate_neighbors(
     # Calculate centroids if needed
     if (prop_centroid_x is None) or (prop_centroid_y is None):
         if centroid_tolerance is not None:
-            prop_centroid_x = 'cent_x_' + rand_id
-            prop_centroid_y = 'cent_y_' + rand_id
+            prop_centroid_x = "cent_x_" + rand_id
+            prop_centroid_y = "cent_y_" + rand_id
             centroids = gdf.centroid
             gdf[prop_centroid_x] = centroids.x
             gdf[prop_centroid_y] = centroids.y
 
     # Calculate area if needed
-    if (prop_area is None):
+    if prop_area is None:
         if overlap_tolerance is not None:
-            prop_area = 'area_' + rand_id
+            prop_area = "area_" + rand_id
             gdf[prop_area] = gdf.area
 
     # Organize keep rules for pandas sort_values
@@ -274,12 +270,13 @@ def deduplicate_neighbors(
 
     # Remove all unnecessary columns
     working_cols = [
-        'geometry',
+        "geometry",
         prop_id,
         split_by,
         prop_area,
         prop_centroid_x,
-        prop_centroid_y] + sort_props
+        prop_centroid_y,
+    ] + sort_props
     working_cols = [i for i in working_cols if i is not None]
     gdf.drop(gdf.columns.difference(working_cols), axis=1, inplace=True)
 
@@ -287,15 +284,11 @@ def deduplicate_neighbors(
     gdf_grouped = gdf.groupby(split_by)
     gdfs = [gdf_grouped.get_group(x) for x in gdf_grouped.groups]
 
-    to_return = {
-        'to_keep': None,
-        'intersections': None,
-        'to_remove': None
-    }
+    to_return = {"to_keep": None, "intersections": None, "to_remove": None}
 
     # If there is only one group, then there is nothing to deduplicate
     if len(gdfs) < 2:
-        to_return['to_keep'] = gdf_original.drop(columns=[prop_id])
+        to_return["to_keep"] = gdf_original.drop(columns=[prop_id])
 
         to_return = label_duplicates(to_return, prop_duplicated)
         # end the deduplicate_neighbors() here, no need to continue
@@ -318,7 +311,7 @@ def deduplicate_neighbors(
             continue
 
         # Polygons must intersect to be considered duplicated
-        duplicates = g1.overlay(g2, how='intersection')
+        duplicates = g1.overlay(g2, how="intersection")
         # Add a unique ID for each new intersection geometry
         duplicates[prop_int_id] = list(range(0, len(duplicates)))
 
@@ -330,28 +323,29 @@ def deduplicate_neighbors(
             # Catch the UserWarning that is raised if area is calculated
             # using the a non-projected coordinate system.
             with warnings.catch_warnings():
-                warnings.simplefilter('ignore', UserWarning)
+                warnings.simplefilter("ignore", UserWarning)
                 duplicates[prop_int_area] = duplicates.area
-            duplicates[prop_int_area + '_1'] = duplicates[prop_int_area] / \
-                duplicates[prop_area + '_1']
-            duplicates[prop_int_area + '_2'] = duplicates[prop_int_area] / \
-                duplicates[prop_area + '_2']
+            duplicates[prop_int_area + "_1"] = (
+                duplicates[prop_int_area] / duplicates[prop_area + "_1"]
+            )
+            duplicates[prop_int_area + "_2"] = (
+                duplicates[prop_int_area] / duplicates[prop_area + "_2"]
+            )
             # Must the overlap propotion be > threshold for both or just one
             # polygon
             op = operator.and_ if overlap_both else operator.or_
             # Remove polygons from list of duplicates that intersect but have
             # less than the threshold overlap proportion.
-            duplicates = duplicates[op(
-                (duplicates[prop_int_area + '_1'] > overlap_tolerance),
-                (duplicates[prop_int_area + '_2'] > overlap_tolerance)
-            )]
+            duplicates = duplicates[
+                op(
+                    (duplicates[prop_int_area + "_1"] > overlap_tolerance),
+                    (duplicates[prop_int_area + "_2"] > overlap_tolerance),
+                )
+            ]
             # Remove columns no longer needed
             duplicates = duplicates.drop(
-                columns=[
-                    prop_int_area + '_1',
-                    prop_int_area + '_2',
-                    prop_int_area
-                ])
+                columns=[prop_int_area + "_1", prop_int_area + "_2", prop_int_area]
+            )
 
         # Identify a polygon as duplicated when the distance between two
         # centroids is <= the threshold distance
@@ -361,10 +355,10 @@ def deduplicate_neighbors(
             points = []
             for i in [1, 2]:
                 i = str(i)
-                x = duplicates[prop_centroid_x + '_' + i]
-                y = duplicates[prop_centroid_y + '_' + i]
+                x = duplicates[prop_centroid_x + "_" + i]
+                y = duplicates[prop_centroid_y + "_" + i]
                 p = gpd.GeoSeries(gpd.points_from_xy(x, y, crs=crs))
-                if(distance_crs):
+                if distance_crs:
                     p = p.to_crs(distance_crs)
                 points.append(p)
 
@@ -377,14 +371,13 @@ def deduplicate_neighbors(
 
         # If we want to return the intersections
         if return_intersections:
-            to_return['intersections'] = duplicates.copy()
-            to_return['intersections'].drop(
-                [prop_int_id, prop_id + '_1', prop_id + '_2'],
-                axis=1, inplace=True
+            to_return["intersections"] = duplicates.copy()
+            to_return["intersections"].drop(
+                [prop_int_id, prop_id + "_1", prop_id + "_2"], axis=1, inplace=True
             )
 
         # Can treat as a regular DF now
-        duplicates = duplicates.drop(['geometry'], axis=1)
+        duplicates = duplicates.drop(["geometry"], axis=1)
 
         # Reshape from wide to long
         reshape_dict = {}
@@ -396,16 +389,13 @@ def deduplicate_neighbors(
         duplicates = pd.lreshape(duplicates, reshape_dict)
         # Sort to determine which of the duplicates to keep, which should be
         # removed
-        duplicates.sort_values(
-            by=sort_props,
-            ascending=sort_order,
-            inplace=True)
+        duplicates.sort_values(by=sort_props, ascending=sort_order, inplace=True)
         # 'remove' here is correct, should not be 'to_remove'
-        duplicates['remove'] = duplicates.duplicated(prop_int_id, keep='first')
+        duplicates["remove"] = duplicates.duplicated(prop_int_id, keep="first")
 
         # Get the IDs of only the polygons to remove, and add them to the list
         # 'remove' here is correct, should not be 'to_remove'
-        ids_to_remove_pair = duplicates[duplicates['remove']][prop_id]
+        ids_to_remove_pair = duplicates[duplicates["remove"]][prop_id]
         ids_to_remove.update(ids_to_remove_pair)
 
     # Remove polygons from the original gdf when they have an ID that is in the
@@ -415,18 +405,22 @@ def deduplicate_neighbors(
     # Remove the prop_id column, no longer needed
     gdf_original.drop([prop_id], axis=1, inplace=True)
 
-    to_return['to_remove'] = gdf_original[remove]
-    to_return['to_keep'] = gdf_original[~remove]
+    to_return["to_remove"] = gdf_original[remove]
+    to_return["to_keep"] = gdf_original[~remove]
 
     to_return = label_duplicates(to_return, prop_duplicated)
 
     if prop_duplicated in to_return.columns:
         if True in to_return[prop_duplicated].values:
             sum_true = (to_return[prop_duplicated] == True).value_counts()[True]
-            logger.info(f"Sum of True values in the {prop_duplicated} col is: {sum_true}")
+            logger.info(
+                f"Sum of True values in the {prop_duplicated} col is: {sum_true}"
+            )
         else:
             sum_true = 0
-            logger.info(f"Sum of True values in the {prop_duplicated} col is: {sum_true}")
+            logger.info(
+                f"Sum of True values in the {prop_duplicated} col is: {sum_true}"
+            )
     else:
         logger.info(f"{prop_duplicated} is not a column present after labeling.")
 
@@ -439,7 +433,7 @@ def deduplicate_by_footprint(
     footprints,
     keep_rules=[],
     return_intersections=False,
-    prop_duplicated='staging_duplicated' 
+    prop_duplicated="staging_duplicated",
     # defaults to these options only if aren't already specified in config
 ):
     """
@@ -478,10 +472,10 @@ def deduplicate_by_footprint(
     return_intersections : bool, optional
         If true, the polygons that represent the intersections between
         footprints will be returned. Default is False. Not currently available
-        in this release. return_intersections is to be integrated again 
+        in this release. return_intersections is to be integrated again
         in a future release.
     prop_duplicated : str, optional
-        Defaults to "staging_duplicated". The column name / property to use to 
+        Defaults to "staging_duplicated". The column name / property to use to
         flag duplicates.
 
     Returns
@@ -491,8 +485,8 @@ def deduplicate_by_footprint(
         the criteria outlined in the docs. Duplicates are marked as True in the
         prop_duplicated column.
 
-        `intersections` represents the polygon area where the footprints overlap. 
-        It has not been integrated into the function again since the deduplication 
+        `intersections` represents the polygon area where the footprints overlap.
+        It has not been integrated into the function again since the deduplication
         approach changed from returning a dictionary to returning a labeled GDF.
         This will be integrated again in a future release.
     """
@@ -520,7 +514,7 @@ def deduplicate_by_footprint(
     crs = gdf.crs
 
     # Get the unique values of the split_by property. Divide the GeoDataFrame.
-    # split_by is the filename, so data is grouped by input file 
+    # split_by is the filename, so data is grouped by input file
     gdf_grouped = gdf.groupby(split_by)
     # create a dict with each key being an input file,
     # and the value of each key is the polygons that came from that file
@@ -537,10 +531,10 @@ def deduplicate_by_footprint(
                 footprints[name] = gpd.read_file(path)
             except Exception:
                 footprints[name] = None
-                warnings.warn(f'Footprint missing for {name}') 
+                warnings.warn(f"Footprint missing for {name}")
 
     # Add a column to the footprint GeoDataFrame that contains the filename of the footprint
-    prop_filename_temp = 'filename_' + uuid.uuid4().hex
+    prop_filename_temp = "filename_" + uuid.uuid4().hex
     for name, fp_gdf in footprints.items():
         fp_gdf[prop_filename_temp] = name
         # Make sure the footprints are in the same CRS as the GeoDataFrame
@@ -550,14 +544,12 @@ def deduplicate_by_footprint(
     # Rank the footprints according to the keep_rules
     # to determine which file's polygons to keep where two
     # footprints overlap
-    footprints_concat = gpd.GeoDataFrame(pd.concat(
-        footprints.values(), ignore_index=True))
+    footprints_concat = gpd.GeoDataFrame(
+        pd.concat(footprints.values(), ignore_index=True)
+    )
 
     sort_props, sort_order = keep_rules_to_sort_order(keep_rules)
-    footprints_concat.sort_values(
-        by=sort_props,
-        ascending=sort_order,
-        inplace=True)
+    footprints_concat.sort_values(by=sort_props, ascending=sort_order, inplace=True)
     rank = footprints_concat[prop_filename_temp].tolist()
 
     # Find overlapping section of footprints
@@ -567,13 +559,12 @@ def deduplicate_by_footprint(
         name2 = pair[1]
         footprint1 = footprints.get(name1)
         footprint2 = footprints.get(name2)
-        if(footprint1 is None or footprint2 is None):
+        if footprint1 is None or footprint2 is None:
             continue
 
         # Get overlap between two footprints
-        overlap = gpd.GeoDataFrame(
-            geometry=footprint1.intersection(footprint2))
-        overlap['overlap'] = True
+        overlap = gpd.GeoDataFrame(geometry=footprint1.intersection(footprint2))
+        overlap["overlap"] = True
         overlap.to_crs(crs, inplace=True)
         intersections.append(overlap)
 
@@ -586,7 +577,7 @@ def deduplicate_by_footprint(
 
         # Find polygons in the non-preferred GDF that intersect with overlap
         # and remove them.
-        overlap_boolean = to_reduce.sjoin(overlap, how='left')['overlap']
+        overlap_boolean = to_reduce.sjoin(overlap, how="left")["overlap"]
         overlap_boolean = overlap_boolean.fillna(False)
         # subset the least_preferred GDF for only polygons that do not fall within
         # the region where the footprints overlap
@@ -601,16 +592,16 @@ def deduplicate_by_footprint(
 
     # Recombine the GDFs from the dictionary:
     keep = pd.concat(gdf_dict.values(), ignore_index=True)
-    keep.reset_index(drop = True, inplace = True)
+    keep.reset_index(drop=True, inplace=True)
 
     # combine the list of dataframes (called `to_remove`) into one dataframe
     # along rows (stack the dataframes)
-    to_remove = pd.concat(to_remove, ignore_index = True)
-    to_remove.reset_index(drop = True, inplace = True) 
+    to_remove = pd.concat(to_remove, ignore_index=True)
+    to_remove.reset_index(drop=True, inplace=True)
 
     # the two duplicate dataframes have the same columns, so concatenate them (stack)
-    to_remove_all = pd.concat([to_remove, known_dups], ignore_index = True)
-    to_remove_all.reset_index(drop = True, inplace = True)
+    to_remove_all = pd.concat([to_remove, known_dups], ignore_index=True)
+    to_remove_all.reset_index(drop=True, inplace=True)
 
     # ensure that the `keep` gdf has the `prop_duplicated` col too,
     # and values in the `prop_duplicated` column = False
@@ -619,37 +610,39 @@ def deduplicate_by_footprint(
         # set values to True if already set to True
         # if the value is not already True, set it to False
         if prop_duplicated in keep.columns:
-            keep[prop_duplicated] = \
-                keep[prop_duplicated].apply(
-                    lambda x: True if x is True else False)
-        # if the column `prop_duplicated` is not already present, 
+            keep[prop_duplicated] = keep[prop_duplicated].apply(
+                lambda x: True if x is True else False
+            )
+        # if the column `prop_duplicated` is not already present,
         # create it and set all values to False
-        else: 
+        else:
             keep[prop_duplicated] = False
 
     # ensure that the labels for all of `prop_duplicated` are True for to_remove_all
     if to_remove_all is not None:
         to_remove_all[prop_duplicated] = True
 
-    # combine the keep and to_remove_all into 1 gdf, 
+    # combine the keep and to_remove_all into 1 gdf,
     # stack them because already have the same columns
-    to_return = pd.concat([keep, to_remove_all], ignore_index = True)
-    to_return.reset_index(drop = True, inplace = True)
+    to_return = pd.concat([keep, to_remove_all], ignore_index=True)
+    to_return.reset_index(drop=True, inplace=True)
 
-    #if return_intersections:
+    # if return_intersections:
     #    to_return['intersections'] = pd.concat(intersections, ignore_index=True)
-    # need to re-integrate this optional step later, 
+    # need to re-integrate this optional step later,
     # not currently available since removing dict step during cliping to FP
 
     if prop_duplicated in to_return.columns:
         if True in to_return[prop_duplicated].values:
             sum_true = (to_return[prop_duplicated] == True).value_counts()[True]
-            logger.info(f"Sum of True values in the {prop_duplicated}"
-                        f" col is: {sum_true}")
+            logger.info(
+                f"Sum of True values in the {prop_duplicated}" f" col is: {sum_true}"
+            )
         else:
             sum_true = 0
-            logger.info(f"Sum of True values in the {prop_duplicated}" 
-                        f"col is: {sum_true}")
+            logger.info(
+                f"Sum of True values in the {prop_duplicated}" f"col is: {sum_true}"
+            )
     else:
         logger.info(f"{prop_duplicated} is not a column present after labeling.")
 
@@ -675,8 +668,8 @@ def label_duplicates(deduplicate_output, prop_duplicated):
 
     """
 
-    not_duplicates = deduplicate_output['to_keep']
-    duplicates = deduplicate_output['to_remove']
+    not_duplicates = deduplicate_output["to_keep"]
+    duplicates = deduplicate_output["to_remove"]
 
     if duplicates is not None:
         duplicates[prop_duplicated] = True
@@ -687,23 +680,25 @@ def label_duplicates(deduplicate_output, prop_duplicated):
             # contains the column `prop_duplicated`
             # set values to True if already set to True
             # if the value is not already True, set it to False
-            not_duplicates[prop_duplicated] = \
-                not_duplicates[prop_duplicated].apply(
-                    lambda x: True if x is True else False)
+            not_duplicates[prop_duplicated] = not_duplicates[prop_duplicated].apply(
+                lambda x: True if x is True else False
+            )
         else:
-            # if the column `prop_duplicated` is not already present, 
+            # if the column `prop_duplicated` is not already present,
             # create it and set all values to False
-            not_duplicates[prop_duplicated] = False 
+            not_duplicates[prop_duplicated] = False
 
     combined = pd.concat([not_duplicates, duplicates], ignore_index=True)
     combined.reset_index(drop=True, inplace=True)
 
     if prop_duplicated not in combined.columns:
-        msg = (f"Config set to dedup but {prop_duplicated} column"
-               f" not in gdf after labeling duplicates."
-               f"\nColumns are: {combined.columns}")
+        msg = (
+            f"Config set to dedup but {prop_duplicated} column"
+            f" not in gdf after labeling duplicates."
+            f"\nColumns are: {combined.columns}"
+        )
         logger.info(msg)
-    
+
     if combined[prop_duplicated].isna().any():
         logger.info(f"{prop_duplicated} column has NA values.")
 

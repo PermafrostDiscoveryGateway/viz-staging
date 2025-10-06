@@ -1,7 +1,7 @@
 # Viz-staging: vector data tiling for geospatial visualization
 
-- **Authors**: Robyn Thiessen-Bock ; Juliet Cohen ; Matthew B. Jones ; Kastan Day ; Lauren Walker
-- **DOI**: [10.18739/A2Z60C395](https://ezid.cdlib.org/id/doi:10.18739/A2Z60C395)
+- **Authors**: Robyn Thiessen-Bock ; Juliet Cohen ; Matthew B. Jones ; Kastan Day ; Lauren Walker; Rushiraj Nenuji; Alyona Kosobokova
+- **DOI**: [10.18739/A2M32NC48](https://ezid.cdlib.org/id/doi:10.18739/A2M32NC48)
 - **License**: [Apache 2](https://opensource.org/license/apache-2-0/)
 - [Package source code on GitHub](https://github.com/PermafrostDiscoveryGateway/viz-staging)
 - [Submit bugs and feature requests](https://github.com/PermafrostDiscoveryGateway/viz-staging/issues/new)
@@ -14,35 +14,101 @@ The `pdgstaging` package divides vector files into tiled vector files according 
 
 Cite this software as:
 
-> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker. 2023. Viz-staging: vector data tiling for geospatial visualization (version 0.9.2). Arctic Data Center. doi: 10.18739/A2Z60C395
+> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker, Rushiraj Nenuji, Alyona Kosobokova. 2025. Viz-staging: vector data tiling for geospatial visualization (version 1.0.0). Arctic Data Center. doi: 10.18739/A2M32NC48
 
 ## Install
 
 Requires Python version `3.9` or `3.10` and `libspatialindex` or `libspatialindex-dev`
 
+### Prerequisites
+
 1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
 2. Make sure that Python version 3.9 or 3.10 is installed (try `which python3.9`).
-3. Install `pdgstaging` from GitHub repo using pip: `pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git`
 
-## Usage
+### Installation Options
 
-4. Create a config JSON file for the staging job, see [the docs](docs/config.md) for details, `help(pdgstaging.ConfigManager)` for all configuration options, and `pdgstaging.ConfigManager.defaults` for default config values.
+#### Option 1: Using uv (recommended)
 
-**From the command line:**
-- run: `python -m pdgstaging -c '/path/to/config.json'`
+Install `pdgstaging` from GitHub repo using uv:
 
-**In python:**
+```bash
+# Install the package
+uv pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
 
-```python
-import pdgstaging
-stager = pdgstaging.TileStager('/path/to/config.json')
-stager.stage_all()
-
-# OR, to stage only one file
-stager.stage('path/to/input/file.shp')
+# Or install with development dependencies
+uv pip install "git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git[dev]"
 ```
 
-See more example code in [`PermafrostDiscoveryGateway/viz-info/helpful-code`](https://github.com/PermafrostDiscoveryGateway/viz-info/tree/main/helpful-code)
+#### Option 2: Using pip
+
+Install `pdgstaging` from GitHub repo using pip:
+
+```bash
+# Install the package
+pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# Or install with development dependencies
+pip install "git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git[dev]"
+```
+
+#### Option 3: Using a virtual environment
+
+If you prefer to use a virtual environment:
+
+```bash
+# Create and activate a virtual environment
+python3.9 -m venv venv
+source venv/bin/activate  # On macOS/Linux
+# or
+venv\Scripts\activate     # On Windows
+
+# Install with uv
+uv pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# Or install with pip
+pip install git+https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+
+# To deactivate the virtual environment when done
+deactivate
+```
+
+#### For Development
+
+If you're developing this package, clone the repository and install in editable mode:
+
+```bash
+# Clone the repository
+git clone https://github.com/PermafrostDiscoveryGateway/viz-staging.git
+cd viz-staging
+
+# Option 1: Using uv to create and manage virtual environment
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Option 2: Using uv with custom virtual environment
+python3.9 -m venv venv
+source venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Option 3: Using pip with virtual environment
+python3.9 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+
+# Option 4: Direct installation with uv (creates managed environment)
+uv pip install -e ".[dev]"
+
+# Option 5: Direct installation with pip
+pip install -e ".[dev]"
+```
+
+The development dependencies include:
+- `pytest >= 7` - for running tests
+- `black >= 24.1.1` - for code formatting
+- `pre-commit >= 3.5.0` - for pre-commit hooks
+
+See example code in [`PermafrostDiscoveryGateway/viz-info/helpful-code`](https://github.com/PermafrostDiscoveryGateway/viz-info/tree/main/helpful-code)
 
 ## Vector file staging for the PDG tiling pipeline
 
@@ -94,10 +160,10 @@ The staging process will also output a summary CSV file with one row for each ti
 
 ## Development
 
-Build and test using poetry and pytest.
+Build and test using standard Python tools.
 
-- To build, run `poetry build`
 - To test, run `pytest` from the root of the package directory
+- To format code, run `black .`
 - VS Code configuration is setup to configure tests as well
 
 ## License

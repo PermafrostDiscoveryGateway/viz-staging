@@ -13,7 +13,7 @@ from pyproj import CRS
 from numbers import Number
 
 
-class Grid():
+class Grid:
     """
     The Grid class represents a lattice of rows and columns, evenly spaced
     along a given coordinate reference system. Rows and columns are each
@@ -24,9 +24,9 @@ class Grid():
     A Grid is similar to a 'fishnet' in ArcGIS.
     """
 
-    ROW_IND_NAME = 'grid_row_index'
-    COL_IND_NAME = 'grid_column_index'
-    ID = 'GRID_' + str(uuid4())
+    ROW_IND_NAME = "grid_row_index"
+    COL_IND_NAME = "grid_column_index"
+    ID = "GRID_" + str(uuid4())
 
     def __init__(
         self,
@@ -37,7 +37,7 @@ class Grid():
         first_row_i=0,
         first_col_i=0,
         left_to_right=True,
-        top_to_bottom=True
+        top_to_bottom=True,
     ):
         """
         Initialize a grid.
@@ -99,14 +99,15 @@ class Grid():
             for bound in bounds:
                 # can be any numeric type
                 if not isinstance(bound, Number):
-                    raise TypeError('bounds must be a list-like object')
+                    raise TypeError("bounds must be a list-like object")
         except Exception:
-            raise TypeError('bounds must be a list-like object with 4 numbers')
+            raise TypeError("bounds must be a list-like object with 4 numbers")
         if len(bounds) != 4:
-            raise ValueError('bounds comprise exactly 4 numbers')
+            raise ValueError("bounds comprise exactly 4 numbers")
         self._bounds = bounds
-        self.__delattrs__(['_row_fences', '_col_fences',
-                          '_gdf_rows', '_gdf_cols', '_gdf_cells'])
+        self.__delattrs__(
+            ["_row_fences", "_col_fences", "_gdf_rows", "_gdf_cols", "_gdf_cells"]
+        )
 
     @property
     def nrows(self):
@@ -120,10 +121,9 @@ class Grid():
     @nrows.setter
     def nrows(self, nrows):
         if not isinstance(nrows, int):
-            raise TypeError('nrows must be an integer')
+            raise TypeError("nrows must be an integer")
         self._nrows = nrows
-        self.__delattrs__(['_row_indices', '_row_fences', '_gdf_rows',
-                           '_gdf_cells'])
+        self.__delattrs__(["_row_indices", "_row_fences", "_gdf_rows", "_gdf_cells"])
 
     @property
     def ncols(self):
@@ -137,10 +137,9 @@ class Grid():
     @ncols.setter
     def ncols(self, ncols):
         if not isinstance(ncols, int):
-            raise TypeError('ncols must be an integer')
+            raise TypeError("ncols must be an integer")
         self._ncols = ncols
-        self.__delattrs__(['_col_indices', '_col_fences',
-                           '_gdf_cols', '_gdf_cells'])
+        self.__delattrs__(["_col_indices", "_col_fences", "_gdf_cols", "_gdf_cells"])
 
     @property
     def first_row_i(self):
@@ -154,9 +153,9 @@ class Grid():
     @first_row_i.setter
     def first_row_i(self, first_row_i):
         if not isinstance(first_row_i, int):
-            raise TypeError('first_row_i must be an integer')
+            raise TypeError("first_row_i must be an integer")
         self._first_row_i = first_row_i
-        self.__delattrs__(['_row_indices', '_gdf_rows', '_gdf_cells'])
+        self.__delattrs__(["_row_indices", "_gdf_rows", "_gdf_cells"])
 
     @property
     def first_col_i(self):
@@ -170,9 +169,9 @@ class Grid():
     @first_col_i.setter
     def first_col_i(self, first_col_i):
         if not isinstance(first_col_i, int):
-            raise TypeError('first_col_i must be an integer')
+            raise TypeError("first_col_i must be an integer")
         self._first_col_i = first_col_i
-        self.__delattrs__(['_col_indices', '_gdf_cols', '_gdf_cells'])
+        self.__delattrs__(["_col_indices", "_gdf_cols", "_gdf_cells"])
 
     @property
     def crs(self):
@@ -188,10 +187,11 @@ class Grid():
             CRS.from_user_input(crs)
         except Exception:
             raise TypeError(
-                'crs must be a valid coordinate reference system.'
-                'See pyproj.CRS.from_user_input() for more on valid formats.')
+                "crs must be a valid coordinate reference system."
+                "See pyproj.CRS.from_user_input() for more on valid formats."
+            )
         self._crs = crs
-        self.__delattrs__(['_gdf_rows', '_gdf_cols', '_gdf_cells'])
+        self.__delattrs__(["_gdf_rows", "_gdf_cols", "_gdf_cells"])
 
     @property
     def left_to_right(self):
@@ -206,9 +206,9 @@ class Grid():
     @left_to_right.setter
     def left_to_right(self, left_to_right):
         if not isinstance(left_to_right, bool):
-            raise TypeError('left_to_right must be a boolean')
+            raise TypeError("left_to_right must be a boolean")
         self._left_to_right = left_to_right
-        self.__delattrs__(['_col_indices', '_gdf_cols', '_gdf_cells'])
+        self.__delattrs__(["_col_indices", "_gdf_cols", "_gdf_cells"])
 
     @property
     def top_to_bottom(self):
@@ -223,9 +223,9 @@ class Grid():
     @top_to_bottom.setter
     def top_to_bottom(self, top_to_bottom):
         if not isinstance(top_to_bottom, bool):
-            raise TypeError('top_to_bottom must be a boolean')
+            raise TypeError("top_to_bottom must be a boolean")
         self._top_to_bottom = top_to_bottom
-        self.__delattrs__(['_row_indices', '_gdf_rows', '_gdf_cells'])
+        self.__delattrs__(["_row_indices", "_gdf_rows", "_gdf_cells"])
 
     @property
     def minx(self):
@@ -301,9 +301,9 @@ class Grid():
     @height.setter
     def height(self, height):
         if not isinstance(height, Number):
-            raise TypeError('height must be a number')
+            raise TypeError("height must be a number")
         if height <= 0:
-            raise ValueError('height must be positive')
+            raise ValueError("height must be positive")
         bounds = self.bounds
         bounds[3] = self.miny + height
         self.bounds = bounds
@@ -321,9 +321,9 @@ class Grid():
     @width.setter
     def width(self, width):
         if not isinstance(width, Number):
-            raise TypeError('width must be a number')
+            raise TypeError("width must be a number")
         if width <= 0:
-            raise ValueError('width must be positive')
+            raise ValueError("width must be positive")
         bounds = self.bounds
         bounds[2] = self.minx + width
         self.bounds = bounds
@@ -336,7 +336,7 @@ class Grid():
         number of rows (nrows property), the first_row_i property, and the
         top_to_bottom property.
         """
-        if not hasattr(self, '_row_indices'):
+        if not hasattr(self, "_row_indices"):
             first_row_i = self.first_row_i
             last_row_i = first_row_i + self.nrows
             self._row_indices = list(range(first_row_i, last_row_i))
@@ -349,9 +349,9 @@ class Grid():
         try:
             for ind in row_indices:
                 if not isinstance(ind, int):
-                    raise TypeError('row_indices must be a list of integers')
+                    raise TypeError("row_indices must be a list of integers")
         except Exception:
-            raise TypeError('row_indices must be a list-like object')
+            raise TypeError("row_indices must be a list-like object")
 
         if len(row_indices) != self.nrows:
             self.nrows = len(row_indices)
@@ -375,7 +375,7 @@ class Grid():
         GeoDataFrames, the number of columns (ncols property), the first_col_i
         property, and the left_to_right property.
         """
-        if not hasattr(self, '_col_indices'):
+        if not hasattr(self, "_col_indices"):
             first_col_i = self.first_col_i
             last_col_i = first_col_i + self.ncols
             self._col_indices = list(range(first_col_i, last_col_i))
@@ -388,9 +388,9 @@ class Grid():
         try:
             for ind in col_indices:
                 if not isinstance(ind, int):
-                    raise TypeError('col_indices must be a list of integers')
+                    raise TypeError("col_indices must be a list of integers")
         except Exception:
-            raise TypeError('col_indices must be a list-like object')
+            raise TypeError("col_indices must be a list-like object")
 
         if len(col_indices) != self.ncols:
             self.ncols = len(col_indices)
@@ -451,7 +451,7 @@ class Grid():
         list of number : The row fences of the grid, i.e. the y coordinates of
         the grid lines. This property is read-only.
         """
-        if not hasattr(self, '_row_fences'):
+        if not hasattr(self, "_row_fences"):
             self._row_fences = linspace(self.miny, self.maxy, self.nrows + 1)
         return self._row_fences
 
@@ -461,7 +461,7 @@ class Grid():
         list of number : The column fences of the grid, i.e. the x coordinates
         of the grid lines. This property is read-only.
         """
-        if not hasattr(self, '_col_fences'):
+        if not hasattr(self, "_col_fences"):
             self._col_fences = linspace(self.minx, self.maxx, self.ncols + 1)
         return self._col_fences
 
@@ -471,7 +471,7 @@ class Grid():
         GeoDataFrame : Return a GeoDataFrame of polygons covering each row in
         the grid, indexed by the row indices. This property is read-only.
         """
-        if not hasattr(self, '_gdf_rows'):
+        if not hasattr(self, "_gdf_rows"):
             nrows = self.nrows
             minx = self.minx
             maxx = self.maxx
@@ -479,7 +479,8 @@ class Grid():
             ri = self.row_indices
             r_geoms = [box(minx, rf[i], maxx, rf[i + 1]) for i in range(nrows)]
             self._gdf_rows = GeoDataFrame(
-                {self.ROW_IND_NAME: ri, 'geometry': r_geoms}, crs=self.crs)
+                {self.ROW_IND_NAME: ri, "geometry": r_geoms}, crs=self.crs
+            )
         return self._gdf_rows
 
     @property
@@ -488,7 +489,7 @@ class Grid():
         GeoDataFrame : Return a GeoDataFrame of polygons covering each column
         in the grid, indexed by the column indices. This property is read-only.
         """
-        if not hasattr(self, '_gdf_cols'):
+        if not hasattr(self, "_gdf_cols"):
             ncols = self.ncols
             miny = self.miny
             maxy = self.maxy
@@ -496,7 +497,8 @@ class Grid():
             ci = self.col_indices
             c_geoms = [box(cf[i], miny, cf[i + 1], maxy) for i in range(ncols)]
             self._gdf_cols = GeoDataFrame(
-                {self.COL_IND_NAME: ci, 'geometry': c_geoms}, crs=self.crs)
+                {self.COL_IND_NAME: ci, "geometry": c_geoms}, crs=self.crs
+            )
         return self._gdf_cols
 
     @property
@@ -505,7 +507,7 @@ class Grid():
         GeoDataFrame : A GeoDataFrame with one polygon for each cell in the
         grid, along with the associated row and column indices.
         """
-        if not hasattr(self, '_gdf_cells'):
+        if not hasattr(self, "_gdf_cells"):
 
             rf = self.row_fences
             cf = self.col_fences
@@ -522,15 +524,18 @@ class Grid():
                     col_indices.append(ci[j])
                     cell_geoms.append(box(cf[j], rf[i], cf[j + 1], rf[i + 1]))
 
-            self._gdf_cells = GeoDataFrame({
-                self.ROW_IND_NAME: row_indices,
-                self.COL_IND_NAME: col_indices,
-                'geometry': cell_geoms
-            }, crs=self.crs)
+            self._gdf_cells = GeoDataFrame(
+                {
+                    self.ROW_IND_NAME: row_indices,
+                    self.COL_IND_NAME: col_indices,
+                    "geometry": cell_geoms,
+                },
+                crs=self.crs,
+            )
 
         return self._gdf_cells
 
-    def overlay(self, gdf, how='intersection', as_index=False, **kwargs):
+    def overlay(self, gdf, how="intersection", as_index=False, **kwargs):
         """
         Spatially superimpose the grid onto a GeoDataFrame of polygons, and
         return the GeoDataFrame with new polygon shapes based on places where
@@ -592,42 +597,47 @@ class Grid():
         gdf_c = gdf.copy()
 
         # Check validity of inputs
-        if how == 'difference':
+        if how == "difference":
             raise NotImplementedError(
-                'The difference operation is not supported by the grid '
-                'overlay method. Use the symmetric_difference operation '
-                'instead.')
+                "The difference operation is not supported by the grid "
+                "overlay method. Use the symmetric_difference operation "
+                "instead."
+            )
 
-        methods = ['intersection', 'union', 'identity', 'symmetric_difference']
+        methods = ["intersection", "union", "identity", "symmetric_difference"]
         if how not in methods:
             raise ValueError(
                 f'The operation "{how}" is not supported by the grid overlay '
-                'method. The supported operations are: {methods}')
+                "method. The supported operations are: {methods}"
+            )
 
         gdf_c = self.__check_crs_match__(gdf_c)
 
         # Perform the overlay operation. Overlay rows, then columns, when there
         # are more cells than half the number of polygons. Otherwise, perform
         # the operation on the cells.
-        if how != 'symmetric_difference' and self.ncells > (len(gdf_c) / 2):
-            gdf_c_cols = gdf_c \
-                .overlay(self.gdf_cols, how, keep_geom_type=False, **kwargs)
-            gdf_c_rows_col = gdf_c_cols \
-                .overlay(self.gdf_rows, how, keep_geom_type=False, **kwargs)
+        if how != "symmetric_difference" and self.ncells > (len(gdf_c) / 2):
+            gdf_c_cols = gdf_c.overlay(
+                self.gdf_cols, how, keep_geom_type=False, **kwargs
+            )
+            gdf_c_rows_col = gdf_c_cols.overlay(
+                self.gdf_rows, how, keep_geom_type=False, **kwargs
+            )
         else:
-            gdf_c_rows_col = gdf_c \
-                .overlay(
-                    self.gdf_cells, how=how, keep_geom_type=False, **kwargs)
+            gdf_c_rows_col = gdf_c.overlay(
+                self.gdf_cells, how=how, keep_geom_type=False, **kwargs
+            )
 
         gdf_c_rows_col = gdf_c_rows_col.explode(index_parts=False)
 
         if as_index:
             gdf_c_rows_col.set_index(
-                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
+                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True
+            )
 
         return gdf_c_rows_col
 
-    def sjoin(self, gdf, how='left', predicate='intersects', as_index=False):
+    def sjoin(self, gdf, how="left", predicate="intersects", as_index=False):
         """
         Spatially join the grid and a GeoDataFrame. Return either the
         GeoDataFrame with the associated row & column indices for each
@@ -688,48 +698,43 @@ class Grid():
         # version of sjoin that takes advantage of the grid's uniform
         # structure.
 
-        if predicate == 'intersects' and self.__all_geom_type__(gdf, 'Point'):
+        if predicate == "intersects" and self.__all_geom_type__(gdf, "Point"):
             return self.__sjoin_points__(gdf, how, as_index=as_index)
         # Otherwise, use the built-in geopandas sjoin method with the GDF of
         # grid cells (slowest)
         else:
             return self.__sjoin_cells__(gdf, how, predicate, as_index=as_index)
 
-    def __sjoin_cells__(
-            self,
-            gdf,
-            how='left',
-            predicate='intersects',
-            as_index=False):
+    def __sjoin_cells__(self, gdf, how="left", predicate="intersects", as_index=False):
         """
-            Spatially join the grid and a GeoDataFrame. This method is the
-            slowest of the sjoin method and is called by the Grid.sjoin method
-            when when the predicate is not 'intersects' and when the input
-            GeoDataFrame does not contains only Point or only Polygon
-            geometries.
+        Spatially join the grid and a GeoDataFrame. This method is the
+        slowest of the sjoin method and is called by the Grid.sjoin method
+        when when the predicate is not 'intersects' and when the input
+        GeoDataFrame does not contains only Point or only Polygon
+        geometries.
 
-            See the Grid.sjoin method for more information.
+        See the Grid.sjoin method for more information.
         """
         joined = gdf.sjoin(
             self.gdf_cells,
             how=how,
             predicate=predicate,
-            lsuffix=self.ID + '_left',
-            rsuffix=self.ID + '_right')
+            lsuffix=self.ID + "_left",
+            rsuffix=self.ID + "_right",
+        )
         # drop all columns containing the GRID ID
         joined = joined.loc[:, ~joined.columns.str.contains(self.ID)]
         if as_index:
-            joined.set_index(
-                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
+            joined.set_index([self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
         return joined
 
-    def __sjoin_points__(self, gdf, how='left', as_index=False):
+    def __sjoin_points__(self, gdf, how="left", as_index=False):
         """
-            Spatially join the grid and a GeoDataFrame. This method is called
-            by the Grid.sjoin method when when the input GeoDataFrame contains
-            only Point geometries, and the predicate is 'intersects'.
+        Spatially join the grid and a GeoDataFrame. This method is called
+        by the Grid.sjoin method when when the input GeoDataFrame contains
+        only Point geometries, and the predicate is 'intersects'.
 
-            See the Grid.sjoin method for more information.
+        See the Grid.sjoin method for more information.
         """
 
         # self.__check_join_type__(how)
@@ -739,23 +744,20 @@ class Grid():
         ri = self.ROW_IND_NAME
         ci = self.COL_IND_NAME
 
-        gdf_c[ri], gdf_c[ci] = self.indices_from_xy(
-            gdf_c.geometry.x, gdf_c.geometry.y)
+        gdf_c[ri], gdf_c[ci] = self.indices_from_xy(gdf_c.geometry.x, gdf_c.geometry.y)
 
-        if how == 'left' or how == 'inner':
+        if how == "left" or how == "inner":
             to_return = gdf_c
 
         else:
             # if how is 'right'
             cells = self.gdf_cells.copy()
-            point_info = DataFrame(gdf_c.drop(columns='geometry'))
-            cells_with_point_info = cells \
-                .merge(point_info, on=[ri, ci], how='left')
+            point_info = DataFrame(gdf_c.drop(columns="geometry"))
+            cells_with_point_info = cells.merge(point_info, on=[ri, ci], how="left")
             to_return = cells_with_point_info
 
         if as_index:
-            to_return.set_index(
-                [self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
+            to_return.set_index([self.ROW_IND_NAME, self.COL_IND_NAME], inplace=True)
 
         return to_return
 
@@ -790,8 +792,7 @@ class Grid():
         y = array(y)
 
         if len(x) != len(y):
-            raise ValueError('list of x and y coordinates must be the same '
-                             'length.')
+            raise ValueError("list of x and y coordinates must be the same " "length.")
 
         row_ind = searchsorted(self.row_fences, y) - 1
         col_ind = searchsorted(self.col_fences, x) - 1
@@ -812,90 +813,104 @@ class Grid():
 
     def __check_crs_match__(self, gdf):
         """
-            Check that a GeoDataFrame has a CRS and that it is the same CRS as
-            the grid. If it's not, reproject it with a warning. Return the GDF.
+        Check that a GeoDataFrame has a CRS and that it is the same CRS as
+        the grid. If it's not, reproject it with a warning. Return the GDF.
         """
         if self.crs != gdf.crs:
             if gdf.crs is None:
                 raise ValueError(
-                    'The GeoDataFrame requires a coordinate reference system.')
-            warn('The CRS of the GeoDataFrame does not match the CRS of the '
-                 'grid. The resulting GeoDataFrame will be re-projected to the'
-                 ' CRS of the grid.')
+                    "The GeoDataFrame requires a coordinate reference system."
+                )
+            warn(
+                "The CRS of the GeoDataFrame does not match the CRS of the "
+                "grid. The resulting GeoDataFrame will be re-projected to the"
+                " CRS of the grid."
+            )
             gdf.to_crs(self.crs, inplace=True)
         return gdf
 
     @staticmethod
     def __check_join_type__(how):
         """
-            Check if a spatial join type is valid. Raise an error if it is not.
-            Used for sjoin.
+        Check if a spatial join type is valid. Raise an error if it is not.
+        Used for sjoin.
         """
-        supported_types = ['left', 'right', 'inner']
+        supported_types = ["left", "right", "inner"]
         if how not in supported_types:
             raise ValueError(
                 f'The join type "{how}" is not allowed for a spatial join. '
-                'Allowed join types include: {supported_types}')
+                "Allowed join types include: {supported_types}"
+            )
 
     @staticmethod
     def __check_predicate__(predicate):
         """
-            Check if a spatial predicate is valid. Raise an error if it is not.
-            Used for sjoin.
+        Check if a spatial predicate is valid. Raise an error if it is not.
+        Used for sjoin.
         """
-        supported_predicates = ['intersects', 'contains', 'within',
-                                'touches', 'crosses', 'overlaps']
+        supported_predicates = [
+            "intersects",
+            "contains",
+            "within",
+            "touches",
+            "crosses",
+            "overlaps",
+        ]
         if predicate not in supported_predicates:
             raise ValueError(
                 f'The predicate "{predicate}" is not supported by the grid '
-                'sjoin method. The supported predicates are: '
-                f'{supported_predicates}')
+                "sjoin method. The supported predicates are: "
+                f"{supported_predicates}"
+            )
 
     @staticmethod
-    def __all_geom_type__(gdf, geom_type='Polygon', raise_error=False):
+    def __all_geom_type__(gdf, geom_type="Polygon", raise_error=False):
         """
-            Check if all geometries in a GeoDataFrame are of the same type.
-            Optionally raise an error if they are not.
+        Check if all geometries in a GeoDataFrame are of the same type.
+        Optionally raise an error if they are not.
 
-            Parameters
-            ----------
-            gdf : GeoDataFrame
-                The GeoDataFrame to check.
-            geom_type : str, optional
-                The geometry type to check for. Default is 'Polygon'.
-            raise_error : bool, optional
-                If True, raise an error if the geometries are not of the same
-                type. Default is False.
+        Parameters
+        ----------
+        gdf : GeoDataFrame
+            The GeoDataFrame to check.
+        geom_type : str, optional
+            The geometry type to check for. Default is 'Polygon'.
+        raise_error : bool, optional
+            If True, raise an error if the geometries are not of the same
+            type. Default is False.
         """
         are_all_geom_type = (gdf.geom_type == geom_type).all()
         if raise_error and not are_all_geom_type:
             raise ValueError(
-                f'The GeoDataFrame must contain only {geom_type} geometries.')
+                f"The GeoDataFrame must contain only {geom_type} geometries."
+            )
         return are_all_geom_type
 
     def plot(self):
         """
         Plot the grid with matplotlib. This is useful for debugging.
         """
-        grid_line_color = '#a1a8ab'
+        grid_line_color = "#a1a8ab"
         rows = self.gdf_rows
         cols = self.gdf_cols
-        ax = rows.plot(edgecolor=grid_line_color, facecolor='none')
-        cols.plot(ax=ax, edgecolor=grid_line_color, facecolor='none')
+        ax = rows.plot(edgecolor=grid_line_color, facecolor="none")
+        cols.plot(ax=ax, edgecolor=grid_line_color, facecolor="none")
         for i, row in rows.iterrows():
             ax.text(
                 row.geometry.bounds[0],
                 row.geometry.centroid.y,
-                'ROW ' + str(row[self.ROW_IND_NAME]),
-                horizontalalignment='left',
-                verticalalignment='center')
+                "ROW " + str(row[self.ROW_IND_NAME]),
+                horizontalalignment="left",
+                verticalalignment="center",
+            )
         for i, col in cols.iterrows():
             ax.text(
                 col.geometry.centroid.x,
                 col.geometry.bounds[3],
-                'COL ' + str(col[self.COL_IND_NAME]),
-                horizontalalignment='center',
-                verticalalignment='top')
+                "COL " + str(col[self.COL_IND_NAME]),
+                horizontalalignment="center",
+                verticalalignment="top",
+            )
         return ax
 
 
@@ -906,7 +921,7 @@ class TMSGrid(Grid):
     morecantile: https://developmentseed.org/morecantile/
     """
 
-    TILE_NAME = 'grid_tile'
+    TILE_NAME = "grid_tile"
 
     def __init__(self, tms_id, z, bounds):
         """
@@ -933,8 +948,8 @@ class TMSGrid(Grid):
         LL_EPSILON = 1e-11
 
         if west > east:
-            bbox_west = (tms.bbox.left, south, east, north)
-            bbox_east = (west, south, tms.bbox.right, north)
+            bbox_west = (tms.xy_bbox.left, south, east, north)
+            bbox_east = (west, south, tms.xy_bbox.right, north)
             bboxes = [bbox_west, bbox_east]
         else:
             bboxes = [(west, south, east, north)]
@@ -950,16 +965,16 @@ class TMSGrid(Grid):
         for w, s, e, n in bboxes:
 
             # Clamp bounding values.
-            w = max(tms.bbox.left, w)
-            s = max(tms.bbox.bottom, s)
-            e = min(tms.bbox.right, e)
-            n = min(tms.bbox.top, n)
+            w = max(tms.xy_bbox.left, w)
+            s = max(tms.xy_bbox.bottom, s)
+            e = min(tms.xy_bbox.right, e)
+            n = min(tms.xy_bbox.top, n)
 
-            ul_tile = tms.tile(w + LL_EPSILON, n - LL_EPSILON, z)
-            lr_tile = tms.tile(e - LL_EPSILON, s + LL_EPSILON, z)
+            ul_tile = tms._tile(w + LL_EPSILON, n - LL_EPSILON, z)
+            lr_tile = tms._tile(e - LL_EPSILON, s + LL_EPSILON, z)
 
-            ul_tile_bounds = tms.bounds(ul_tile)
-            lr_tile_bounds = tms.bounds(lr_tile)
+            ul_tile_bounds = tms.xy_bounds(ul_tile)
+            lr_tile_bounds = tms.xy_bounds(lr_tile)
 
             top_limits.append(ul_tile_bounds.top)
             bottom_limits.append(lr_tile_bounds.bottom)
@@ -982,16 +997,12 @@ class TMSGrid(Grid):
             ncols=len(x),
             first_row_i=min(y),
             first_col_i=min(x),
-            crs=tms.crs
+            crs=tms.crs,
         )
 
     def sjoin(
-            self,
-            gdf,
-            how='left',
-            predicate='intersects',
-            as_index=False,
-            as_tile=False):
+        self, gdf, how="left", predicate="intersects", as_index=False, as_tile=False
+    ):
         """
             Extends the Grid.sjoin method to add the extra `as_tile` parameter,
             which returns the Tile object in a column or as the index instead
@@ -1008,13 +1019,7 @@ class TMSGrid(Grid):
         gdf = super().sjoin(gdf, how, predicate, as_index=False)
         return self.__handle_tile_index__(gdf, as_tile, as_index)
 
-    def overlay(
-            self,
-            gdf,
-            how='intersection',
-            as_index=False,
-            as_tile=False,
-            **kwargs):
+    def overlay(self, gdf, how="intersection", as_index=False, as_tile=False, **kwargs):
         """
             Extends the Grid.overlay method to add the extra `as_tile`
             parameter, which returns the Tile object in a column or as the
@@ -1033,16 +1038,16 @@ class TMSGrid(Grid):
 
     def indices_from_xy(self, x, y, as_tile=False):
         """
-            Extends the Grid.indices_from_xy method to add the extra `as_tile`
-            parameter. When `as_tile` is set to True, return the
-            morecantile.Tile object instead of the list of row and column
-            indices.
+        Extends the Grid.indices_from_xy method to add the extra `as_tile`
+        parameter. When `as_tile` is set to True, return the
+        morecantile.Tile object instead of the list of row and column
+        indices.
 
-            Parameters
-            ----------
-            as_tile : boolean
-                Set to True to return a list of morecantile Tile objects
-                instead of the two lists of row & column indices.
+        Parameters
+        ----------
+        as_tile : boolean
+            Set to True to return a list of morecantile Tile objects
+            instead of the two lists of row & column indices.
         """
         row_is, col_is = super().indices_from_xy(x, y)
         if as_tile:
@@ -1052,47 +1057,47 @@ class TMSGrid(Grid):
 
     def tiles_from_xy(self, x, y):
         """
-            Identify which tile each coordinate in a list falls within. Given a
-            list of x & y coordinates in the same CRS as the tms grid, return
-            the corresponding morecantile Tile where each coordinate is
-            located. When a point is located outside of the grid, Tile for that
-            point will be None
+        Identify which tile each coordinate in a list falls within. Given a
+        list of x & y coordinates in the same CRS as the tms grid, return
+        the corresponding morecantile Tile where each coordinate is
+        located. When a point is located outside of the grid, Tile for that
+        point will be None
 
-            To instead match a GeoDataFrame of Point geometries to cells, use
-            Grid.sjoin.
+        To instead match a GeoDataFrame of Point geometries to cells, use
+        Grid.sjoin.
 
-            Parameters
-            ----------
-            x : list-like
-                The list of x-coordinates (e.g. [x1, x2, x3]), or a single x
-                coordinate.
-            y : list-like
-                The list of y-coordinates (e.g. [y1, y2, y3]), or a single y
-                coordinate.
+        Parameters
+        ----------
+        x : list-like
+            The list of x-coordinates (e.g. [x1, x2, x3]), or a single x
+            coordinate.
+        y : list-like
+            The list of y-coordinates (e.g. [y1, y2, y3]), or a single y
+            coordinate.
 
-            Returns
-            -------
-            tuple of lists
-                The row indices and column indices, respectively, that each of
-                the given point coordinates falls within.
+        Returns
+        -------
+        tuple of lists
+            The row indices and column indices, respectively, that each of
+            the given point coordinates falls within.
         """
         return self.indices_from_xy(x, y, as_tile=True)
 
     def tile_from_rc(self, r, c):
         """
-            Return a morecantile Tile object given a row and column index
+        Return a morecantile Tile object given a row and column index
 
-            Parameters
-            ----------
-            r : int
-                A row index
-            c : int
-                A column index
+        Parameters
+        ----------
+        r : int
+            A row index
+        c : int
+            A column index
 
-            Returns
-            -------
-            morecantile.Tile
-                The Tile object for the row and index, and the z of this grid
+        Returns
+        -------
+        morecantile.Tile
+            The Tile object for the row and index, and the z of this grid
         """
         # tileCol increases towards the right = x = horizontal index
         # tileRow increases towards the bottom = y = vertical index
@@ -1104,11 +1109,11 @@ class TMSGrid(Grid):
 
     def __handle_tile_index__(self, gdf, as_tile, as_index):
         """
-            Take a GDF with row index and column index columns. If as_tile is
-            true, convert those columns into a single tile column that contains
-            the associated morecantile.Tile object. If as_index is true, set
-            the tile column (or ow index and column index columns) as the GDF
-            index. Return the index.
+        Take a GDF with row index and column index columns. If as_tile is
+        true, convert those columns into a single tile column that contains
+        the associated morecantile.Tile object. If as_index is true, set
+        the tile column (or ow index and column index columns) as the GDF
+        index. Return the index.
         """
         ri = self.ROW_IND_NAME
         ci = self.COL_IND_NAME

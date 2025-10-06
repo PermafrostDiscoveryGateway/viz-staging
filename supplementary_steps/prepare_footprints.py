@@ -74,62 +74,57 @@ from pdgstaging import TileStager
 
 # Some options that could change on a per-project basis
 options = {
-    'base_dir': '/home/pdg/data/ice-wedge-polygon-data/version 01',
-    'subdir_suffix': '_iwp',
-    'footprint_file_prefix': 'selection_',
-    'dir_vector_input_data': '',
-    'dir_footprints_in': 'footprints/original_footprints',
-    'dir_footprints_out': 'footprints/staged_footprints',
-    'ext_footprints_in': '.shp',
-    'ext_footprints_out': '.gpkg',
-    'prop_file_id': 'Name',
-    'prop_date': 'Date',
+    "base_dir": "/home/pdg/data/ice-wedge-polygon-data/version 01",
+    "subdir_suffix": "_iwp",
+    "footprint_file_prefix": "selection_",
+    "dir_vector_input_data": "",
+    "dir_footprints_in": "footprints/original_footprints",
+    "dir_footprints_out": "footprints/staged_footprints",
+    "ext_footprints_in": ".shp",
+    "ext_footprints_out": ".gpkg",
+    "prop_file_id": "Name",
+    "prop_date": "Date",
     # Directories to skip when searching for IWP input data that matches
     # footprint file names
-    'dirs_skip': [
-        'web_tiles_1TB_testrun',
-        'high_ice/russia/russia',
-        'high_ice/medium_ice/alaska_m',
-        'high_ice/medium_ice/russia_m',
-        'footprints'
+    "dirs_skip": [
+        "web_tiles_1TB_testrun",
+        "high_ice/russia/russia",
+        "high_ice/medium_ice/alaska_m",
+        "high_ice/medium_ice/russia_m",
+        "footprints",
     ],
     # Where to save records of footprint matches and failures
-    'filename_unmatched_footprints':
-        'footprints/footprint_files_unmatched_to_subdirs.json',
-    'filename_matched_footprints':
-        'footprints/footprint_files_matched_to_subdirs.json',
-    'filename_multimatch_footprints':
-        'footprints/footprint_files_multimatch_to_subdirs.json',
-    'filename_unmatched_footprint_features':
-        'footprints/footprint_features_unmatched_to_files.json',
-    'filename_matched_footprint_features':
-        'footprints/footprint_features_matched_to_files.json'
+    "filename_unmatched_footprints": "footprints/footprint_files_unmatched_to_subdirs.json",
+    "filename_matched_footprints": "footprints/footprint_files_matched_to_subdirs.json",
+    "filename_multimatch_footprints": "footprints/footprint_files_multimatch_to_subdirs.json",
+    "filename_unmatched_footprint_features": "footprints/footprint_features_unmatched_to_files.json",
+    "filename_matched_footprint_features": "footprints/footprint_features_matched_to_files.json",
 }
 
 # Add base directory to options
 path_opts = [
-    'dir_vector_input_data',
-    'dir_footprints_in',
-    'dir_footprints_out',
-    'filename_unmatched_footprints',
-    'filename_matched_footprints',
-    'filename_multimatch_footprints',
-    'filename_unmatched_footprint_features',
-    'filename_matched_footprint_features']
+    "dir_vector_input_data",
+    "dir_footprints_in",
+    "dir_footprints_out",
+    "filename_unmatched_footprints",
+    "filename_matched_footprints",
+    "filename_multimatch_footprints",
+    "filename_unmatched_footprint_features",
+    "filename_matched_footprint_features",
+]
 
 for o in path_opts:
-    options[o] = os.path.join(options['base_dir'], options[o])
+    options[o] = os.path.join(options["base_dir"], options[o])
 
-for i in range(0, len(options['dirs_skip'])):
-    options['dirs_skip'][i] = os.path.join(
-        options['base_dir'], options['dirs_skip'][i])
+for i in range(0, len(options["dirs_skip"])):
+    options["dirs_skip"][i] = os.path.join(options["base_dir"], options["dirs_skip"][i])
 
 
 def get_base_name(path):
     """
     Get the base name of a file, without the extension
     """
-    return os.path.basename(path).split('.')[0]
+    return os.path.basename(path).split(".")[0]
 
 
 def date_from_id(string):
@@ -137,36 +132,36 @@ def date_from_id(string):
     Parse date from IWP file name
     """
     # Split string by underscore
-    parts = string.split('_')
+    parts = string.split("_")
     # Return the second part, represents date & time
     return parts[1]
 
 
 def id_from_input_path(input):
     """
-        Get just the IWP file 'ID' code from the full path name that
-        includes a two-part suffix
+    Get just the IWP file 'ID' code from the full path name that
+    includes a two-part suffix
     """
     input = get_base_name(input)
-    parts = input.split('_')
+    parts = input.split("_")
     parts = parts[:-2]
-    input = '_'.join(parts)
+    input = "_".join(parts)
     return input
 
 
 def subdir_from_footprint_path(footprint_path):
     """
-        Get the IWP subdirectory name from the footprint file path. The
-        sub-directory of the input file is the the filename of the matching
-        footprint, minus the prefix 'selection_', plus the suffix '_iwp'
+    Get the IWP subdirectory name from the footprint file path. The
+    sub-directory of the input file is the the filename of the matching
+    footprint, minus the prefix 'selection_', plus the suffix '_iwp'
     """
     subdir = get_base_name(footprint_path)
-    subdir = subdir.removeprefix(options['footprint_file_prefix'])
-    subdir += options['subdir_suffix']
+    subdir = subdir.removeprefix(options["footprint_file_prefix"])
+    subdir += options["subdir_suffix"]
     return subdir
 
 
-def get_input_subdirs(rootdir='.', dirs_skip=[], recursive=True):
+def get_input_subdirs(rootdir=".", dirs_skip=[], recursive=True):
     """
     List all subdirectories in a directory that include the '_iwp' suffix,
     excluding the ones contained within in the dirs_skip list.
@@ -174,7 +169,7 @@ def get_input_subdirs(rootdir='.', dirs_skip=[], recursive=True):
     dirs = []
     for item in os.scandir(rootdir):
         if item.is_dir() and (item.path not in dirs_skip):
-            if item.name.endswith(options['subdir_suffix']):
+            if item.name.endswith(options["subdir_suffix"]):
                 dirs.append(item.path)
             if recursive:
                 subdirs = get_input_subdirs(item.path, dirs_skip, recursive)
@@ -186,12 +181,14 @@ def get_input_subdirs(rootdir='.', dirs_skip=[], recursive=True):
 # Create a tile stager with the location of the input IWP data files, and the
 # *DESIRED* location of the footprint files. dir_footprints is where we will
 # save the footprints that are prepared for staging.
-tileStager = TileStager({
-    'dir_input': options['dir_vector_input_data'],
-    'dir_footprints': options['dir_footprints_out'],
-    'ext_input': options['ext_footprints_in'],
-    'ext_footprints': options['ext_footprints_out']
-})
+tileStager = TileStager(
+    {
+        "dir_input": options["dir_vector_input_data"],
+        "dir_footprints": options["dir_footprints_out"],
+        "ext_input": options["ext_footprints_in"],
+        "ext_footprints": options["ext_footprints_out"],
+    }
+)
 
 # To help create and parse paths
 pathManager = tileStager.tiles
@@ -201,19 +198,19 @@ config = tileStager.config
 
 # Add the directory where the footprints are currently stored
 pathManager.add_base_dir(
-    name='footprints_original',
-    dir_path=options['dir_footprints_in'],
-    ext=options['ext_footprints_in'],
+    name="footprints_original",
+    dir_path=options["dir_footprints_in"],
+    ext=options["ext_footprints_in"],
 )
 
 # Get the paths to all of the original footprint files
-footprint_paths = pathManager.get_filenames_from_dir('footprints_original')
+footprint_paths = pathManager.get_filenames_from_dir("footprints_original")
 
-dir_input = config.get('dir_input')
-ext_input = config.get('ext_input')
+dir_input = config.get("dir_input")
+ext_input = config.get("ext_input")
 
 # Get a list of all possible input data sub-directories
-all_input_subdirs = get_input_subdirs(dir_input, options['dirs_skip'])
+all_input_subdirs = get_input_subdirs(dir_input, options["dirs_skip"])
 
 # For record keeping
 directory_matches = []
@@ -225,27 +222,28 @@ for footprint_path in footprint_paths:
     subdir_name = subdir_from_footprint_path(footprint_path)
 
     # Find the dir in all_input_subdirs that matches the subdir_name
-    subdir_input = [dir for dir in all_input_subdirs if dir.split(
-        os.sep)[-1] == subdir_name]
+    subdir_input = [
+        dir for dir in all_input_subdirs if dir.split(os.sep)[-1] == subdir_name
+    ]
 
     # Record the match (or lack thereof)
     directory_match = {
-        'original_footprint_path': footprint_path,
-        'status': 'no_match',
-        'match': None
+        "original_footprint_path": footprint_path,
+        "status": "no_match",
+        "match": None,
     }
     if len(subdir_input) > 1:
-        directory_match['status'] = 'multiple_matches'
-        directory_match['match'] = subdir_input
+        directory_match["status"] = "multiple_matches"
+        directory_match["match"] = subdir_input
     elif len(subdir_input) == 1:
         subdir_input = subdir_input[0]
-        directory_match['status'] = 'matched'
-        directory_match['match'] = subdir_input
+        directory_match["status"] = "matched"
+        directory_match["match"] = subdir_input
 
     directory_matches.append(directory_match)
 
     # Stop here if not 1 and only 1 match
-    if directory_match['status'] != 'matched':
+    if directory_match["status"] != "matched":
         continue
 
     # Get the paths & IDs of input files in the matched sub-directory
@@ -255,7 +253,7 @@ for footprint_path in footprint_paths:
 
     # Read the footprint GDF, split into 1 GeoDataFrame per row
     fp = gpd.read_file(footprint_path)
-    fp_list = [v for k, v in fp.groupby('Name', as_index=False)]
+    fp_list = [v for k, v in fp.groupby("Name", as_index=False)]
 
     # For each GDF (row)
     for fp_row in fp_list:
@@ -264,14 +262,14 @@ for footprint_path in footprint_paths:
         fp_row.reset_index(drop=True, inplace=True)
         fp_id = fp_row.Name[0]
         date = date_from_id(fp_id)
-        fp_row['Date'] = date
+        fp_row["Date"] = date
 
         file_match = {
-            'original_footprint_path': footprint_path,
-            'footprint_id': fp_id,
-            'date': date,
-            'status': 'no_match',
-            'match': None
+            "original_footprint_path": footprint_path,
+            "footprint_id": fp_id,
+            "date": date,
+            "status": "no_match",
+            "match": None,
         }
 
         # Find the corresponding IWP file
@@ -282,19 +280,20 @@ for footprint_path in footprint_paths:
 
             # Create the file path expected by the viz-workflow
             footprint_path_staging = config.footprint_path_from_input(
-                matching_file, check_exists=False)
+                matching_file, check_exists=False
+            )
 
             # Make any necessary parent directories
             pathManager.create_dirs(footprint_path_staging)
 
             # Save the single-polygon vector file to the filepath
             with warnings.catch_warnings():
-                warnings.simplefilter('ignore', FutureWarning)
+                warnings.simplefilter("ignore", FutureWarning)
                 fp_row.to_file(footprint_path_staging)
 
             # Record the match
-            file_match['status'] = 'matched'
-            file_match['match'] = matching_file
+            file_match["status"] = "matched"
+            file_match["match"] = matching_file
             file_matches.append(file_match)
 
         except ValueError:
@@ -302,19 +301,24 @@ for footprint_path in footprint_paths:
 
 # Filter records and map to output filenames
 record_map = {
-    options['filename_unmatched_footprints']:
-        [d for d in directory_matches if d['status'] == 'no_match'],
-    options['filename_matched_footprints']:
-        [d for d in directory_matches if d['status'] == 'matched'],
-    options['filename_multimatch_footprints']:
-        [d for d in directory_matches if d['status'] == 'multiple_matches'],
-    options['filename_unmatched_footprint_features']:
-        [f for f in file_matches if f['status'] == 'no_match'],
-    options['filename_matched_footprint_features']:
-        [f for f in file_matches if f['status'] == 'matched']
+    options["filename_unmatched_footprints"]: [
+        d for d in directory_matches if d["status"] == "no_match"
+    ],
+    options["filename_matched_footprints"]: [
+        d for d in directory_matches if d["status"] == "matched"
+    ],
+    options["filename_multimatch_footprints"]: [
+        d for d in directory_matches if d["status"] == "multiple_matches"
+    ],
+    options["filename_unmatched_footprint_features"]: [
+        f for f in file_matches if f["status"] == "no_match"
+    ],
+    options["filename_matched_footprint_features"]: [
+        f for f in file_matches if f["status"] == "matched"
+    ],
 }
 
 # Write all of the records to the output files as JSON
 for filename, records in record_map.items():
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         json.dump(records, f, indent=2)
