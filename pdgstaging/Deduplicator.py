@@ -5,9 +5,6 @@ import uuid
 import itertools
 import warnings
 
-from datetime import datetime
-import numpy as np
-from filelock import FileLock
 import logging
 
 logger = logging.getLogger(__name__)
