@@ -1,5 +1,3 @@
-import os
-import pytest
 from pdgstaging.TilePathManager import TilePathManager
 
 def test_validate_tms_and_path_structure_ok():
