@@ -994,7 +994,7 @@ class TileStager:
 
         self.tiles = TilePathManager(
             tms_id=self.tms_id,
-            path_structure=self.path_structrue,
+            path_structure=self.path_structure,
             base_dirs=self.base_dirs,
         )
 
