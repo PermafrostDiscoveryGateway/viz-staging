@@ -799,8 +799,8 @@ class Grid:
 
         # Don't count points outside the grid.
         inv = -9999
-        inside_rows = ~logical_or(row_ind < 0, row_ind > self.nrows)
-        inside_cols = ~logical_or(col_ind < 0, col_ind > self.ncols)
+        inside_rows = ~logical_or(row_ind < 0, row_ind >= self.nrows)
+        inside_cols = ~logical_or(col_ind < 0, col_ind >= self.ncols)
         inside_grid = logical_and(inside_rows, inside_cols)
         row_ind[~inside_grid] = inv
         col_ind[~inside_grid] = inv
