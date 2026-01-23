@@ -1,9 +1,10 @@
 # H3 Grid Summary Generator
 
 Goal: Convert feature geometries into H3 cell indices, then aggregate per-cell metrics.
-	•	For any input geometry file: compute "_count" per h3 cell (how many features intersect with the cell).
-	•	For polygon features: additionally compute "area_km2" per h3 cell (how much polygon area falls inside the cell).
-	•	Optionally compute land-only denominators: "land_area_km2", "land_fraction", and "land_coverage_fraction".
+
+	1. For any input geometry file: compute "_count" per h3 cell (how many features intersect with the cell).
+	2. For polygon features: additionally compute "area_km2" per h3 cell (how much polygon area falls inside the cell).
+	3. Optionally compute land-only statistics: "land_area_km2", "land_fraction", and "land_coverage_fraction".
 
 Inputs
 
@@ -15,21 +16,24 @@ Inputs
 
 Output
 
-	•	out_gdf: H3 grid (polygons) with per-cell summary attributes written to output_path (GeoPackage)
+	•	out_gdf: H3 polygon layer with aggregated attributes written to output_path (GeoPackage)
 
 ### Function 1: `build_h3_summary(input_path, output_path, h3_res, land_polygons_path, area_epsg=6933)`
 
-	1.	Read input
-		* gdf ← gpd.read_file(input_path)
-		* If gdf.crs is missing: raise error
-		* If gdf.crs.to_epsg() != 4326: gdf ← gdf.to_crs(epsg=4326)
+	1.	Load and normalize CRS
+		• Read gdf = gpd.read_file(input_path).
+		• Ensure geometry is in WGS84 (EPSG:4326) because H3 indexing expects lon/lat.
 
-	2. Initialize
-		* records ← []
-		* gdf_area ← None
+	2. Decide which metrics are to be computed
+		• Always compute "_count" (feature-to-cell intersection count).
+		• Compute "area_km2" only if input is set of polygonal features: create gdf_area = gdf.to_crs(epsg=area_epsg) for reliable area computations.
 
-	3. Pre-project for polygon area calculations (if needed)
-		3.1. If any geometry type in gdf.geom_type is Polygon or MultiPolygon:
-			 * gdf_area ← gdf.to_crs(epsg=area_epsg)
+	3. Generate each feature's statistics corresponding to each cell into a `records` table
+		• Initialize records = [].
+		• For each feature (row) with geometry geom:
+			- Compute the set of H3 cells that the feature intersects: 
+				* h3_indices = feature_to_h3_indices(geom, h3_res)
+				* (Logic: point → one cell; polygon/line → polyfill; if polyfill empty → fallback to representative point cell)
+			- For each h3_index = h in h3_indices, append a per-cell statistic:
 
 	
