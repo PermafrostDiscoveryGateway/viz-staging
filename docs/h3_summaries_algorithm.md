@@ -1,4 +1,5 @@
 Inputs
+
 	•	input_path: Path to input vector dataset (.shp or .gpkg)
 	•	output_path: Path to output GeoPackage
 	•	h3_res: H3 resolution (1–15)
