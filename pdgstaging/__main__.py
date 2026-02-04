@@ -1,6 +1,7 @@
 import logging
 import argparse
 from pdgstaging import TileStager
+from pdgstaging import H3SummaryStager
 
 if __name__ == "__main__":
 
