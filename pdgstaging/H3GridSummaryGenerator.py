@@ -1,9 +1,9 @@
-# H3GridSummaryGenerator.py
 #!/usr/bin/env python3
 
 import argparse
 import logging
 from pathlib import Path
+from typing import Optional, Union, Set, List
 
 import geopandas as gpd
 from shapely.geometry import Polygon
@@ -15,16 +15,19 @@ import numpy as np
 from . import TilePathManager
 
 
+PathLike = Union[str, Path]
+
+
 class H3GridSummaryGenerator:
     def __init__(
         self,
         area_epsg: int = 6933,
-        land_polygons_path: str | Path | None = None,
-        logger: logging.Logger | None = None,
-        tiles: TilePathManager | None = None,
+        land_polygons_path: Optional[PathLike] = None,
+        logger: Optional[logging.Logger] = None,
+        tiles: Optional[TilePathManager] = None,
         out_base_dir: str = "h3",
-        attr_to_sum=None,
-        attr_to_mean=None,
+        attr_to_sum: Optional[List[str]] = None,
+        attr_to_mean: Optional[List[str]] = None,
     ):
         self.area_epsg = area_epsg
         self.land_polygons_path = land_polygons_path
@@ -34,7 +37,7 @@ class H3GridSummaryGenerator:
         self.attr_to_sum = attr_to_sum or []
         self.attr_to_mean = attr_to_mean or []
 
-    def polygon_to_h3_cells(self, geom, res: int) -> set[str]:
+    def polygon_to_h3_cells(self, geom, res: int) -> Set[str]:
         if geom is None or geom.is_empty:
             return set()
 
@@ -49,7 +52,7 @@ class H3GridSummaryGenerator:
             cells = {h3.latlng_to_cell(rp.y, rp.x, res)}
         return cells
 
-    def feature_to_h3_indices(self, geom, res: int) -> set[str]:
+    def feature_to_h3_indices(self, geom, res: int) -> Set[str]:
         if geom is None or geom.is_empty:
             return set()
 
@@ -71,14 +74,14 @@ class H3GridSummaryGenerator:
         return cells
 
     def h3_to_polygon(self, h: str) -> Polygon:
-        boundary = h3.cell_to_boundary(h)
+        boundary = h3.cell_to_boundary(h)  # list[(lat, lon)]
         boundary_xy = [(lon, lat) for lat, lon in boundary]
         return Polygon(boundary_xy)
 
     def add_land_metrics(
         self,
         h3_gdf: gpd.GeoDataFrame,
-        land_polygons_path: str | Path,
+        land_polygons_path: PathLike,
         area_epsg: int = 6933,
     ) -> gpd.GeoDataFrame:
         land = gpd.read_file(land_polygons_path)
@@ -124,14 +127,14 @@ class H3GridSummaryGenerator:
 
     def build_h3_summary(
         self,
-        input_path: str | Path,
-        output_path: str | Path,
+        input_path: PathLike,
+        output_path: PathLike,
         h3_res: int,
-        land_polygons_path: str | Path | None = None,
-        area_epsg: int | None = None,
-        attr_to_sum=None,
-        attr_to_mean=None,
-    ):
+        land_polygons_path: Optional[PathLike] = None,
+        area_epsg: Optional[int] = None,
+        attr_to_sum: Optional[List[str]] = None,
+        attr_to_mean: Optional[List[str]] = None,
+    ) -> None:
         if area_epsg is None:
             area_epsg = self.area_epsg
         if land_polygons_path is None:
@@ -171,7 +174,6 @@ class H3GridSummaryGenerator:
             for h in h3_indices:
                 rec = {"h3_index": h, "_count": 1}
 
-                # optional attribute passthrough
                 for col in attr_to_sum:
                     rec[f"sum_{col}"] = row[col]
                 for col in attr_to_mean:
@@ -213,7 +215,7 @@ class H3GridSummaryGenerator:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         out_gdf.to_file(output_path, driver="GPKG")
-        self.logger.info(f"Finished writing H3 summary grid to {output_path}")
+        self.logger.info("Finished writing H3 summary grid to %s", output_path)
 
     def valid_h3_resolution(self, value: str) -> int:
         try:
@@ -232,12 +234,7 @@ class H3GridSummaryGenerator:
         parser.add_argument("--sum-cols", nargs="*", default=[], help="Attribute columns to sum by H3 cell")
         parser.add_argument("--mean-cols", nargs="*", default=[], help="Attribute columns to average by H3 cell")
         parser.add_argument("--land-polygons", default=None, help="Optional: path to land/coastline polygon dataset")
-        parser.add_argument(
-            "--area-epsg",
-            type=int,
-            default=self.area_epsg,
-            help="EPSG code for equal-area projection used for area calculations (default: 6933).",
-        )
+        parser.add_argument("--area-epsg", type=int, default=self.area_epsg, help="Equal-area EPSG (default: 6933).")
         args = parser.parse_args()
 
         self.build_h3_summary(

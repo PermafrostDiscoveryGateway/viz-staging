@@ -1,18 +1,21 @@
-# H3SummaryStager.py
+# H3SummaryStager.py (Python 3.9 compatible)
+
 import logging
 import os
 from pathlib import Path
 from datetime import datetime
+from typing import Optional, Union, List
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-
 from filelock import FileLock
-from typing import Optional
 
 from . import TilePathManager
 from .H3GridSummaryGenerator import H3GridSummaryGenerator
+
+
+PathLike = Union[str, Path]
 
 
 class H3SummaryStager:
@@ -48,7 +51,7 @@ class H3SummaryStager:
             logger=self.logger,
         )
 
-    def _output_path_for_input(self, input_path: str | Path, h3_res: int) -> Path:
+    def _output_path_for_input(self, input_path: PathLike, h3_res: int) -> Path:
         input_path = Path(input_path)
 
         input_root = Path(self.tiles.base_dirs["input"]["path"])
@@ -57,7 +60,6 @@ class H3SummaryStager:
         except Exception:
             rel = Path(input_path.name)
 
-        rel = Path(rel)
         stem = rel.stem
         parent = rel.parent
 
@@ -71,11 +73,11 @@ class H3SummaryStager:
     def stage_all(
         self,
         h3_res: int,
-        attr_to_sum=None,
-        attr_to_mean=None,
-        land_polygons_path: str | Path | None = None,
-        area_epsg: int | None = None,
-    ):
+        attr_to_sum: Optional[List[str]] = None,
+        attr_to_mean: Optional[List[str]] = None,
+        land_polygons_path: Optional[PathLike] = None,
+        area_epsg: Optional[int] = None,
+    ) -> None:
         overall_start = datetime.now()
         input_paths = self.tiles.get_filenames_from_dir("input")
         n = len(input_paths)
@@ -84,7 +86,7 @@ class H3SummaryStager:
             self.logger.error("No vector files found for H3 staging.")
             return
 
-        self.logger.info(f"Begin H3 staging {n} input vector files.")
+        self.logger.info("Begin H3 staging %s input vector files.", n)
 
         rows = []
         for p in input_paths:
@@ -104,7 +106,7 @@ class H3SummaryStager:
                 ok = True
             except Exception as e:
                 err = repr(e)
-                self.logger.exception(f"Failed to stage H3 summary for {p}")
+                self.logger.exception("Failed to stage H3 summary for %s", p)
 
             rows.append(
                 {
@@ -122,17 +124,17 @@ class H3SummaryStager:
         self._append_summary(df)
 
         total = datetime.now() - overall_start
-        self.logger.info(f"H3-staged {n} files in {total} ({total / max(n,1)} per file).")
+        self.logger.info("H3-staged %s files in %s (%s per file).", n, total, total / max(n, 1))
 
     def stage(
         self,
-        path: str | Path,
+        path: PathLike,
         h3_res: int,
-        attr_to_sum=None,
-        attr_to_mean=None,
-        land_polygons_path: str | Path | None = None,
-        area_epsg: int | None = None,
-        output_path: str | Path | None = None,
+        attr_to_sum: Optional[List[str]] = None,
+        attr_to_mean: Optional[List[str]] = None,
+        land_polygons_path: Optional[PathLike] = None,
+        area_epsg: Optional[int] = None,
+        output_path: Optional[PathLike] = None,
     ) -> Path:
         if output_path is None:
             output_path = self._output_path_for_input(path, h3_res)
@@ -156,7 +158,8 @@ class H3SummaryStager:
 
         return output_path
 
-    def _append_summary(self, df: pd.DataFrame):
+    def _append_summary(self, df: pd.DataFrame) -> None:
+        # lock summary so concurrent stage_all() runs don’t corrupt the log
         sum_lock = self._lock_file(self.summary_path)
         try:
             csv_path = self.summary_path
@@ -178,7 +181,7 @@ class H3SummaryStager:
         lock.acquire()
         return lock
 
-    def _release_file(self, lock: FileLock):
+    def _release_file(self, lock: FileLock) -> None:
         lock.release()
         if os.path.exists(lock.lock_file):
             os.remove(lock.lock_file)
