@@ -226,23 +226,4 @@ class H3GridSummaryGenerator:
             raise argparse.ArgumentTypeError("H3 resolution must be between 1 and 15.")
         return ivalue
 
-    def main(self):
-        parser = argparse.ArgumentParser(description="Generate H3 vector summary grids for input vector data.")
-        parser.add_argument("input", help="Input vector file (.shp or .gpkg)")
-        parser.add_argument("output", help="Output vector file (.gpkg)")
-        parser.add_argument("res", type=self.valid_h3_resolution, help="H3 resolution (1–15).")
-        parser.add_argument("--sum-cols", nargs="*", default=[], help="Attribute columns to sum by H3 cell")
-        parser.add_argument("--mean-cols", nargs="*", default=[], help="Attribute columns to average by H3 cell")
-        parser.add_argument("--land-polygons", default=None, help="Optional: path to land/coastline polygon dataset")
-        parser.add_argument("--area-epsg", type=int, default=self.area_epsg, help="Equal-area EPSG (default: 6933).")
-        args = parser.parse_args()
-
-        self.build_h3_summary(
-            input_path=args.input,
-            output_path=args.output,
-            h3_res=args.res,
-            attr_to_sum=args.sum_cols,
-            attr_to_mean=args.mean_cols,
-            land_polygons_path=args.land_polygons,
-            area_epsg=args.area_epsg,
-        )
+    
