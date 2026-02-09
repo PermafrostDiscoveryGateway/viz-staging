@@ -14,7 +14,7 @@ Goal: Convert feature geometries into H3 cell indices, then aggregate per-cell m
 * `land_polygons_path` (optional): Land/coastline polygon dataset path
 * `area_epsg` : Equal-area EPSG code for area computations (default 6933)
 
-### Inputs
+### Outputs
 
 * `out_gdf` : H3 polygon layer with aggregated attributes written to output_path (GeoPackage)
 
