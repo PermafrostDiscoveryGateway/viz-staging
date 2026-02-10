@@ -41,9 +41,9 @@ class H3SummaryStager:
         if self.tiles is None:
             raise ValueError("tiles (TilePathManager) is required for workflow integration")
 
-        staged_root = self.tiles.base_dirs["staged"]["path"]
-        summary_root = os.path.dirname(staged_root)
-        self.summary_path = os.path.join(summary_root, summary_filename)
+        h3_root = Path(self.tiles.base_dirs["h3"]["path"])
+        h3_root.mkdir(parents=True, exist_ok=True)
+        self.summary_path = str(h3_root / summary_filename)
 
         self.gen = generator or H3GridSummaryGenerator(
             tiles=self.tiles,
@@ -62,9 +62,7 @@ class H3SummaryStager:
 
         stem = rel.stem
         parent = rel.parent
-
-        # outputs sit next to input/staged directories (same level)
-        out_root = Path(self.tiles.base_dirs["input"]["path"]).parent / self.out_base_dir
+        out_root = Path(self.tiles.base_dirs["h3"]["path"])
         out_dir = out_root / parent
         out_dir.mkdir(parents=True, exist_ok=True)
 
