@@ -1,5 +1,5 @@
 from pandas import DataFrame
-from pdgstaging import ConfigManager
+from pdgstaging import TileStager
 
 
 def test_init():
