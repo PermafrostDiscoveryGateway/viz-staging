@@ -1,6 +1,6 @@
 [project]
 name = "pdgstaging"
-version = "1.0.0"
+version = "1.1.0"
 description = "Geospatial data tiling workflow"
 authors = [
     {name = "Robyn Thiessen-Bock", email = "thiessenbock@nceas.ucsb.edu"},
