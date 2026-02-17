@@ -913,6 +913,12 @@ class TileStager:
             The lock object
         """
         lock_path = path + ".lock"
+
+        # Ensure directory exists for lock file, to prevent race conditions
+        lock_dir = os.path.dirname(lock_path)
+        if lock_dir:
+            os.makedirs(lock_dir, exist_ok=True)
+
         lock = FileLock(lock_path)
         lock.acquire()
         return lock

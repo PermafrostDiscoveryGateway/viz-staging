@@ -612,8 +612,8 @@ class TilePathManager:
 
         for path in paths:
             dir = os.path.dirname(path)
-            if dir and not os.path.exists(dir):
-                os.makedirs(dir)
+            if dir:
+                os.makedirs(dir, exist_ok=True)
 
     @staticmethod
     def remove_nonexistent_paths(paths):
