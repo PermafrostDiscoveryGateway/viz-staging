@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 import uuid
 import warnings
 import gc
@@ -545,6 +546,7 @@ class TileStager:
 
             # Get the tile path
             tile_path = self.tiles.path_from_tile(tile, base_dir="staged")
+            tile_path = os.path.abspath(os.path.normpath(tile_path))
             self.tiles.create_dirs(tile_path)
 
             # Lock the tile so that multiple processes don't try to write to
@@ -586,17 +588,15 @@ class TileStager:
                     )
                 else:
                     # If the file exists and config is not set to deduplicate
-                    # at any step, simply append the polygons to the existing file.
-                    # no polygons will be labeled as duplicates or not.
-                    # If deduplicating by footprint:
-                    # neither file has been clipped to footprint
+                    # at any step, combine existing + incoming data and rewrite
+                    # the tile. 
                     self.logger.info(
                         f"Tile exists but dedup is not set to occur, so"
-                        f" appending polygons."
+                        f" rewriting tile with existing + incoming polygons."
                     )
 
-                    # Append to existing tile
-                    mode = "a"
+                    data = self.__combine_with_existing_tile(data, tile_path)
+                    mode = "w"
                     self.save_new_tile(
                         data=data,
                         tile_path=tile_path,
@@ -743,7 +743,11 @@ class TileStager:
             # Ignore the FutureWarning raised from geopandas issue 2347
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
-                data.to_file(tile_path, mode=mode)
+                self.__retry_gpkg_io(
+                    lambda: data.to_file(tile_path, mode=mode),
+                    tile_path=tile_path,
+                    action=f"write mode={mode}",
+                )
 
             # convert each tile from string format to morecantile format
             # so it can be added to summary
@@ -820,7 +824,11 @@ class TileStager:
         else:
             dedup_method = None
 
-        existing_gdf = gpd.read_file(tile_path)
+        existing_gdf = self.__retry_gpkg_io(
+            lambda: gpd.read_file(tile_path),
+            tile_path=tile_path,
+            action="read existing tile",
+        )
 
         # Projection info can be lost during saving & reopening geopackage
         # files for the CRS used for some TMSs, see details:
@@ -861,6 +869,25 @@ class TileStager:
         )
 
         return gdf
+
+    def __combine_with_existing_tile(self, gdf, tile_path):
+        """
+        Combine existing tile data with incoming data.
+        """
+        existing_gdf = self.__retry_gpkg_io(
+            lambda: gpd.read_file(tile_path),
+            tile_path=tile_path,
+            action="read existing tile (no dedup)",
+        )
+
+        to_concat = [gdf, existing_gdf]
+        num_unique_crs = len({g.crs for g in to_concat})
+        if num_unique_crs != 1:
+            gdf.to_crs(existing_gdf.crs, inplace=True)
+
+        combined = pd.concat(to_concat, ignore_index=True)
+        combined.reset_index(drop=True, inplace=True)
+        return combined
 
     def get_tile_properties(self, tile):
         """
@@ -953,10 +980,41 @@ class TileStager:
         lock : FileLock
             The lock object
         """
+        path = os.path.abspath(os.path.normpath(path))
         lock_path = path + ".lock"
+        lock_dir = os.path.dirname(lock_path)
+        if lock_dir:
+            os.makedirs(lock_dir, exist_ok=True)
         lock = FileLock(lock_path)
         lock.acquire()
         return lock
+
+    def __retry_gpkg_io(
+        self,
+        operation,
+        tile_path,
+        action,
+        retries=6,
+        initial_delay=0.25,
+        backoff=2.0,
+    ):
+        delay = initial_delay
+        for attempt in range(1, retries + 1):
+            try:
+                return operation()
+            except Exception as exc:
+                message = str(exc).lower()
+                locked = ("database is locked" in message) or (
+                    "sqlite" in message and "locked" in message
+                )
+                if (not locked) or attempt == retries:
+                    raise
+                self.logger.warning(
+                    f"Transient lock while attempting to {action} for "
+                    f"{tile_path} (attempt {attempt}/{retries}); retrying in {delay:.2f}s."
+                )
+                time.sleep(delay)
+                delay *= backoff
 
     def __release_file(self, lock):
         """
