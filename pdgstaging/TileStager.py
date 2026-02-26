@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 import uuid
 import warnings
 import gc
@@ -501,6 +502,20 @@ class TileStager:
         grid.TILE_NAME = self.props["tile"]
         return grid
 
+    def _to_file_with_retry(self, data, tile_path, mode, attempts=8, base_sleep=0.2):
+        last = None
+        for i in range(attempts):
+            try:
+                data.to_file(tile_path, mode=mode)
+                return
+            except RuntimeError as e:
+                msg = str(e).lower()
+                if "database is locked" not in msg and "sqlite" not in msg:
+                    raise
+                last = e
+                time.sleep(base_sleep * (2**i))
+        raise last
+
     def save_tiles(
         self,
         gdf=None,
@@ -546,9 +561,11 @@ class TileStager:
 
             # Get the tile path
             tile_path = self.tiles.path_from_tile(tile, base_dir="staged")
-            self.tiles.create_dirs(tile_path)
-
-            # Lock the tile so that multiple processes don't try to write to
+            os.makedirs(os.path.dirname(tile_path), exist_ok=True)
+            try:
+                self.tiles.create_dirs(os.path.dirname(tile_path))
+            except Exception:
+                pass
             lock = self.__lock_file(tile_path)
 
             # Track the start time, the tile, and the number of vectors
@@ -741,12 +758,11 @@ class TileStager:
         """
 
         try:
-            # Ignore the FutureWarning raised from geopandas issue 2347
+            os.environ.setdefault("OGR_SQLITE_BUSY_TIMEOUT", "10000")
+            os.environ.setdefault("SQLITE_BUSY_TIMEOUT", "10000")
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
-                lock_path = str(tile_path) + ".lock"
-                with FileLock(lock_path, timeout=600, poll_interval=2.0):
-                    data.to_file(tile_path, mode=mode)
+                self._to_file_with_retry(data, tile_path, mode=mode)
 
             # convert each tile from string format to morecantile format
             # so it can be added to summary
@@ -957,11 +973,7 @@ class TileStager:
             The lock object
         """
         lock_path = path + ".lock"
-
-        # Ensure directory exists for lock file, to prevent race conditions
-        lock_dir = os.path.dirname(lock_path)
-        if lock_dir:
-            os.makedirs(lock_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
 
         lock = FileLock(lock_path)
         lock.acquire()
@@ -1048,7 +1060,7 @@ class TileStager:
             base_dirs=self.base_dirs,
         )
 
-        return None
+        return self.tiles
 
     def csv_to_parquet(self):
         """
