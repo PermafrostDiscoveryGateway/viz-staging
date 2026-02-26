@@ -13,6 +13,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from filelock import FileLock
 from typing import Optional
+from filelock import FileLock
 
 from . import TilePathManager, TMSGrid
 
@@ -743,7 +744,9 @@ class TileStager:
             # Ignore the FutureWarning raised from geopandas issue 2347
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
-                data.to_file(tile_path, mode=mode)
+                lock_path = str(tile_path) + ".lock"
+                with FileLock(lock_path, timeout=60):
+                    data.to_file(tile_path, mode=mode)
 
             # convert each tile from string format to morecantile format
             # so it can be added to summary
