@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 import time
 import uuid
 import warnings
@@ -14,7 +15,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from filelock import FileLock
 from typing import Optional
-from filelock import FileLock
 
 from . import TilePathManager, TMSGrid
 
@@ -958,7 +958,7 @@ class TileStager:
         # Clean up DataFrame after writing
         del gdf_summary
 
-    def __lock_file(self, path):
+    def __lock_file(self, path, max_attempts=600, min_sleep=0.5, max_sleep=3.0):
         """
         Lock a file for writing.
 
@@ -972,25 +972,39 @@ class TileStager:
         lock : FileLock
             The lock object
         """
-        lock_path = path + ".lock"
+        lock_path = str(path) + ".lock"
         os.makedirs(os.path.dirname(lock_path), exist_ok=True)
 
-        lock = FileLock(lock_path)
-        lock.acquire()
-        return lock
+        for attempt in range(max_attempts):
+            try:
+                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                return lock_path 
+            except FileExistsError:
+                sleep_time = min_sleep + random.random() * (max_sleep - min_sleep)
+                self.logger.debug(
+                    f"Lock busy for {lock_path}, attempt {attempt + 1}/{max_attempts}, "
+                    f"retrying in {sleep_time:.1f}s"
+                )
+                time.sleep(sleep_time)
 
-    def __release_file(self, lock):
+        raise RuntimeError(
+            f"Could not acquire lock for {path} after {max_attempts} attempts "
+        )
+
+    def __release_file(self, lock_path):
         """
-        Release a file lock. Remove the lock file.
+        Release a file lock by removing the lock file.
 
         Parameters
         ----------
         lock : FileLock
             The lock to release
         """
-        lock.release()
-        if os.path.exists(lock.lock_file):
-            os.remove(lock.lock_file)
+        try:
+            os.remove(lock_path)
+        except OSError:
+            pass 
 
     def get_default_base_dir(self):
         """
