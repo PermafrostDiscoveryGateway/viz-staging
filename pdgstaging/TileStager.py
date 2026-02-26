@@ -745,7 +745,7 @@ class TileStager:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 lock_path = str(tile_path) + ".lock"
-                with FileLock(lock_path, timeout=60):
+                with FileLock(lock_path, timeout=600, poll_interval=2.0):
                     data.to_file(tile_path, mode=mode)
 
             # convert each tile from string format to morecantile format
