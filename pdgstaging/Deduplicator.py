@@ -4,10 +4,8 @@ import pandas as pd
 import uuid
 import itertools
 import warnings
+import gc
 
-from datetime import datetime
-import numpy as np
-from filelock import FileLock
 import logging
 
 logger = logging.getLogger(__name__)
@@ -80,6 +78,9 @@ def clip_gdf(gdf=None, boundary=None, method="intersects", prop_duplicated=None)
         ["index_right"], axis=1
     )
 
+    # Clean up boundary to free memory
+    del boundary
+
     # create a gdf called `within` that contains only the gdf rows where the
     # values in prop_in_fp_temp are not null (are within the footprint)
     within = gdf[gdf[prop_in_fp_temp].notnull()]
@@ -97,6 +98,9 @@ def clip_gdf(gdf=None, boundary=None, method="intersects", prop_duplicated=None)
 
     # stack the gdf's
     gdf_with_labels = pd.concat([outside, within], ignore_index=True)
+    # Clean up intermediate objects
+    del outside
+    del within
     gdf_with_labels.reset_index(drop=True, inplace=True)
 
     return gdf_with_labels
@@ -308,10 +312,14 @@ def deduplicate_neighbors(
         g2 = g2[~g2[prop_id].isin(ids_to_remove)]
 
         if (len(g1) == 0) or (len(g2) == 0):
+            # Clean up before continuing
+            del g1, g2
             continue
 
         # Polygons must intersect to be considered duplicated
         duplicates = g1.overlay(g2, how="intersection")
+        # Clean up g1 and g2 as they're no longer needed
+        del g1, g2
         # Add a unique ID for each new intersection geometry
         duplicates[prop_int_id] = list(range(0, len(duplicates)))
 
