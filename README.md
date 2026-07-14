@@ -57,7 +57,7 @@ If you prefer to use a virtual environment:
 
 ```bash
 # Create and activate a virtual environment
-python3.11 -m venv venv
+python3.11 -m venv venv  # Or use python3.12
 source venv/bin/activate  # On macOS/Linux
 # or
 venv\Scripts\activate     # On Windows
@@ -87,12 +87,12 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 # Option 2: Using uv with custom virtual environment
-python3.11 -m venv venv
+python3.11 -m venv venv  # Or use python3.12
 source venv/bin/activate
 uv pip install -e ".[dev]"
 
 # Option 3: Using pip with virtual environment
-python3.11 -m venv venv
+python3.11 -m venv venv  # Or use python3.12
 source venv/bin/activate
 pip install -e ".[dev]"
 
