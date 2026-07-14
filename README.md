@@ -18,12 +18,12 @@ Cite this software as:
 
 ## Install
 
-Requires Python version `3.11` and `libspatialindex` or `libspatialindex-dev`
+Requires Python version `3.11` or `3.12` and `libspatialindex` or `libspatialindex-dev`
 
 ### Prerequisites
 
 1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
-2. Make sure that Python version 3.11 is installed (try `which python3.11`).
+2. Make sure that Python version 3.11 or 3.12 is installed (try `which python3.11` or `which python3.12`).
 
 ### Installation Options
 
