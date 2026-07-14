@@ -1,7 +1,7 @@
 # Viz-staging: vector data tiling for geospatial visualization
 
-- **Authors**: Robyn Thiessen-Bock ; Juliet Cohen ; Matthew B. Jones ; Kastan Day ; Lauren Walker; Rushiraj Nenuji; Alyona Kosobokova
-- **DOI**: [10.18739/A2M32NC48](https://ezid.cdlib.org/id/doi:10.18739/A2M32NC48)
+- **Authors**: Robyn Thiessen-Bock; Juliet Cohen; Matthew B. Jones; Kastan Day; Lauren Walker; Rushiraj Nenuji; Alyona Kosobokova
+- **DOI**: [10.18739/A2GX44X1K](https://ezid.cdlib.org/id/10.18739/A2GX44X1K)
 - **License**: [Apache 2](https://opensource.org/license/apache-2-0/)
 - [Package source code on GitHub](https://github.com/PermafrostDiscoveryGateway/viz-staging)
 - [Submit bugs and feature requests](https://github.com/PermafrostDiscoveryGateway/viz-staging/issues/new)
@@ -14,16 +14,16 @@ The `pdgstaging` package divides vector files into tiled vector files according 
 
 Cite this software as:
 
-> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker, Rushiraj Nenuji, Alyona Kosobokova. 2025. Viz-staging: vector data tiling for geospatial visualization (version 1.0.0). Arctic Data Center. doi: 10.18739/A2M32NC48
+> Robyn Thiessen-Bock, Juliet Cohen, Matt Jones, Kastan Day, Lauren Walker, Rushiraj Nenuji, Alyona Kosobokova. 2026. Viz-staging: vector data tiling for geospatial visualization (version 1.1.0). Arctic Data Center. doi:10.18739/A2GX44X1K
 
 ## Install
 
-Requires Python version `3.9` or `3.10` and `libspatialindex` or `libspatialindex-dev`
+Requires Python version `3.11` and `libspatialindex` or `libspatialindex-dev`
 
 ### Prerequisites
 
 1. Follow the instructions to install [`libspatialindex`](https://libspatialindex.org/en/latest/) or [`libspatialindex-dev`](https://packages.ubuntu.com/bionic/libspatialindex-dev)
-2. Make sure that Python version 3.9 or 3.10 is installed (try `which python3.9`).
+2. Make sure that Python version 3.11 is installed (try `which python3.11`).
 
 ### Installation Options
 
@@ -57,7 +57,7 @@ If you prefer to use a virtual environment:
 
 ```bash
 # Create and activate a virtual environment
-python3.9 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate  # On macOS/Linux
 # or
 venv\Scripts\activate     # On Windows
@@ -87,12 +87,12 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 # Option 2: Using uv with custom virtual environment
-python3.9 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate
 uv pip install -e ".[dev]"
 
 # Option 3: Using pip with virtual environment
-python3.9 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate
 pip install -e ".[dev]"
 

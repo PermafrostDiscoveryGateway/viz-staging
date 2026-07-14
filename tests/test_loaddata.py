@@ -1,5 +1,4 @@
 from pandas import DataFrame
-from pdgstaging import ConfigManager
 
 
 def test_init():
