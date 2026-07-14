@@ -83,6 +83,23 @@ class Grid:
             except AttributeError:
                 pass
 
+    def clear_cache(self):
+        """
+        Clear all cached GeoDataFrames and computed properties to free memory.
+        Useful when grid is no longer needed or after operations are complete.
+        """
+        self.__delattrs__(
+            [
+                "_row_fences",
+                "_col_fences",
+                "_gdf_rows",
+                "_gdf_cols",
+                "_gdf_cells",
+                "_row_indices",
+                "_col_indices",
+            ]
+        )
+
     @property
     def bounds(self):
         """
@@ -620,13 +637,19 @@ class Grid:
             gdf_c_cols = gdf_c.overlay(
                 self.gdf_cols, how, keep_geom_type=False, **kwargs
             )
+            # Clean up intermediate result
+            del gdf_c
             gdf_c_rows_col = gdf_c_cols.overlay(
                 self.gdf_rows, how, keep_geom_type=False, **kwargs
             )
+            # Clean up intermediate result
+            del gdf_c_cols
         else:
             gdf_c_rows_col = gdf_c.overlay(
                 self.gdf_cells, how=how, keep_geom_type=False, **kwargs
             )
+            # Clean up intermediate result
+            del gdf_c
 
         gdf_c_rows_col = gdf_c_rows_col.explode(index_parts=False)
 
@@ -799,8 +822,8 @@ class Grid:
 
         # Don't count points outside the grid.
         inv = -9999
-        inside_rows = ~logical_or(row_ind < 0, row_ind > self.nrows)
-        inside_cols = ~logical_or(col_ind < 0, col_ind > self.ncols)
+        inside_rows = ~logical_or(row_ind < 0, row_ind >= self.nrows)
+        inside_cols = ~logical_or(col_ind < 0, col_ind >= self.ncols)
         inside_grid = logical_and(inside_rows, inside_cols)
         row_ind[~inside_grid] = inv
         col_ind[~inside_grid] = inv

@@ -1,6 +1,6 @@
 [project]
 name = "pdgstaging"
-version = "1.0.0"
+version = "1.1.0"
 description = "Geospatial data tiling workflow"
 authors = [
     {name = "Robyn Thiessen-Bock", email = "thiessenbock@nceas.ucsb.edu"},
@@ -12,18 +12,19 @@ authors = [
 ]
 license = {text = "Apache Software License 2.0"}
 readme = "README.md"
-requires-python = ">= 3.9, < 3.10"
+requires-python = ">= 3.11"
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "numpy >= 1.21, < 2.0",
-    "pandas >= 1.5.3, < 2.0",
+    "pandas >= 2.1, < 3.0",
     "shapely >= 2, < 3.0",
     "geopandas >= 0.12.2, < 1.0",
     "morecantile",
@@ -32,17 +33,11 @@ dependencies = [
     "coloraide >= 0.10, < 1",
     "colormaps == 0.4.0",
     "pyarrow",
+    "h3"
 ]
 
 [project.urls]
 Repository = "https://github.com/PermafrostDiscoveryGateway/viz-staging"
-
-[project.optional-dependencies]
-dev = [
-    "pytest >= 7",
-    "black >= 24.1.1",
-    "pre-commit >= 3.5.0",
-]
 
 [build-system]
 requires = ["hatchling"]
@@ -50,5 +45,13 @@ build-backend = "hatchling.build"
 
 [tool.black]
 line-length = 88
-target-version = ["py39"]
+target-version = ["py311", "py312"]
 include = "\\.pyi?$"
+
+[dependency-groups]
+dev = [
+    "flake8>=7.3.0",
+    "pytest >= 7",
+    "black >= 24.1.1",
+    "pre-commit >= 3.5.0",
+]
