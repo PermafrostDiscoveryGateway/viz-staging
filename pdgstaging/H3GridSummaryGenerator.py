@@ -40,6 +40,16 @@ class H3GridSummaryGenerator:
         self.attr_to_mean = attr_to_mean or []
 
     def polygon_to_h3_cells(self, geom, res: int) -> Set[str]:
+        """
+        Converts a Shapely geometry into a set of H3 cell indices.
+
+        Uses the standard H3 algorithm to find all cells whose centroids fall 
+        within the given polygon. If the polygon is too small or narrow to cover 
+        any cell centroids, it returns the single H3 cell that contains a representative
+        point inside the geometry. A representative point is chosen instead of the
+        centroid because mathematical centroids might lie outside of the polygon (eg: 
+        for a crescent shaped polygon).
+        """
         if geom is None or geom.is_empty:
             return set()
 
@@ -55,6 +65,12 @@ class H3GridSummaryGenerator:
         return cells
 
     def feature_to_h3_indices(self, geom, res: int) -> Set[str]:
+        """
+        Routes a given geometry to the appropriate H3 cell conversion logic based 
+        on its type.
+        
+        Points use the standard H3 method, polygons use the methods above.
+        """
         if geom is None or geom.is_empty:
             return set()
 
@@ -76,6 +92,9 @@ class H3GridSummaryGenerator:
         return cells
 
     def h3_to_polygon(self, h: str) -> Polygon:
+        """
+        Assigns geometry to an H3 cell, needed to get the cells back on a map.
+        """
         boundary = h3.cell_to_boundary(h)  # list[(lat, lon)]
         boundary_xy = [(lon, lat) for lat, lon in boundary]
         return Polygon(boundary_xy)
@@ -86,6 +105,16 @@ class H3GridSummaryGenerator:
         land_polygons_path: PathLike,
         area_epsg: int = 6933,
     ) -> gpd.GeoDataFrame:
+        """
+        Overlays the generated H3 grid with a land polygon dataset to calculate 
+        land-based area metrics for each cell.
+        
+        The method projects both datasets to an equal-area coordinate reference 
+        system to ensure accurate area calculations. Calculates the total land area in 
+        square kilometers (`land_area_km2`) and the percentage of the cell covered by 
+        land (`land_fraction`). If feature area data is present, it also calculates the
+        feature's coverage relative strictly to the land area.
+        """
         land = gpd.read_file(land_polygons_path)
         self.logger.info("Finished reading land polygons")
 
@@ -222,8 +251,11 @@ class H3GridSummaryGenerator:
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        out_gdf.to_file(output_path, driver="GPKG")
-        self.logger.info("Finished writing H3 summary grid to %s", output_path)
+        # if file exists, append to it so we only get one output geopkg for multiple
+        # input files
+        write_mode = "a" if output_path.exists() else "w"
+        out_gdf.to_file(output_path, driver="GPKG", mode=write_mode)
+        self.logger.info("Finished appending H3 summary grid to %s", output_path)
 
     def valid_h3_resolution(self, value: str) -> int:
         try:

@@ -84,6 +84,14 @@ class H3SummaryStager:
             self.logger.error("No vector files found for H3 staging.")
             return
 
+        out_root = Path(self.tiles.base_dirs["h3"]["path"])
+        out_root.mkdir(parents=True, exist_ok=True)
+        master_output = out_root / f"summary_h3r{h3_res}{self.out_ext}"
+        
+        if master_output.exists():
+            self.logger.info("Removing existing H3 file to start fresh: %s", master_output)
+            master_output.unlink()
+
         self.logger.info("Begin H3 staging %s input vector files.", n)
 
         rows = []
@@ -100,6 +108,7 @@ class H3SummaryStager:
                     attr_to_mean=attr_to_mean,
                     land_polygons_path=land_polygons_path,
                     area_epsg=area_epsg,
+                    output_path=master_output
                 )
                 ok = True
             except Exception as e:
