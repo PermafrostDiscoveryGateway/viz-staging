@@ -233,6 +233,9 @@ class TilePathManager:
                             paths.append(fullpath)
                     else:
                         paths.append(fullpath)
+            # Help garbage collector by clearing large lists
+            if len(files) > 1000:
+                del files[:]
 
         return paths
 

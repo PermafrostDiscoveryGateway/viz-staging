@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 import warnings
+import gc
 from datetime import datetime
 from .Deduplicator import deduplicate_neighbors, deduplicate_by_footprint, clip_gdf
 
@@ -105,8 +106,12 @@ class TileStager:
 
         self.logger.info(f"Begin staging {num_paths} input vector files. ")
 
-        for path in input_paths:
+        for i, path in enumerate(input_paths):
             self.stage(path)
+            # Periodic garbage collection to prevent memory buildup
+            if (i + 1) % 50 == 0:
+                gc.collect()
+                self.logger.debug(f"Garbage collected after {i + 1} files")
         try:
             self.csv_to_parquet()
         except Exception:
@@ -142,8 +147,14 @@ class TileStager:
             self.grid = self.make_tms_grid(gdf)
             gdf = self.add_properties(gdf, path)
             self.save_tiles(gdf)
+            # Clean up to free memory
+            del gdf
+            self.grid = None
         else:
             self.logger.warning(f"No features in {path}")
+            # Clean up empty GeoDataFrame
+            if gdf is not None:
+                del gdf
 
     def clip_to_footprint(
         self,
@@ -231,6 +242,8 @@ class TileStager:
                 method="intersects",
                 prop_duplicated=prop_duplicated,
             )
+            # Clean up footprint GeoDataFrame to free memory
+            del fp
 
             return gdf_with_labels
         else:
@@ -263,6 +276,10 @@ class TileStager:
         except FileNotFoundError:
             gdf = None
             self.logger.warning(f"{input_path} not found. It will be skipped.")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error reading {input_path}: {e}")
+            return None
         self.logger.info(f"Read in {input_path} in {(datetime.now() - start_time)}")
 
         # Check that none of the existing properties match the configured
@@ -357,7 +374,10 @@ class TileStager:
         """
         start_time = datetime.now()
         if tolerance is not None:
-            gdf["geometry"] = gdf["geometry"].simplify(tolerance)
+            # Simplify in place and ensure old geometry data is released
+            simplified = gdf["geometry"].simplify(tolerance)
+            gdf["geometry"] = simplified
+            del simplified
             self.logger.info(
                 f"Simplified {len(gdf.index)} polygons in "
                 f"{datetime.now() - start_time}"
@@ -401,6 +421,8 @@ class TileStager:
             gdf[props["area"]] = gdf.area
         gdf[props["centroid_x"]] = centroids.x
         gdf[props["centroid_y"]] = centroids.y
+        # Clean up centroids to free memory
+        del centroids
 
         # Add source file path, excluding the input dir and any leading slashes
         gdf[props["filename"]] = path.removeprefix(dir_input).strip(os.sep)
@@ -414,6 +436,8 @@ class TileStager:
         gdf = self.assign_tile(gdf)
         centroid_only = gdf[props["tile"]] == gdf[props["centroid_tile"]]
         gdf[props["centroid_within_tile"]] = centroid_only
+        # Clean up intermediate boolean series
+        del centroid_only
 
         self.logger.info(
             f"Added properties for {num_polygons} vectors in "
@@ -516,6 +540,8 @@ class TileStager:
             dedup_method = None
 
         for tile, data in gdf.groupby(self.props["tile"]):
+            # Create a copy to avoid modifying the grouped data
+            data = data.copy()
 
             # Get the tile path
             tile_path = self.tiles.path_from_tile(tile, base_dir="staged")
@@ -726,10 +752,16 @@ class TileStager:
 
             tiles_morecantile = [self.tiles.tile_from_str(tile) for tile in tiles_str]
 
+            # Clean up intermediate tiles_str to free memory
+            del tiles_str
+
             # Record what was saved
             data[self.props["tile"]] = tiles_morecantile
             summary_csv_path = self.summary_path
             self.summarize(data, summary_csv_path)
+        except Exception as e:
+            self.logger.error(f"Error saving tile {tile_path}: {e}")
+            raise
         finally:
             # Track the end time, the total time, and the number of vectors
             self.logger.info(f"Saved {tile_path} in {datetime.now() - start_time}")
@@ -803,6 +835,9 @@ class TileStager:
             gdf.to_crs(existing_gdf.crs, inplace=True)
 
         gdf = pd.concat(to_concat, ignore_index=True)
+        # Clean up intermediate objects to free memory
+        del existing_gdf
+        del to_concat
         gdf.reset_index(drop=True, inplace=True)
 
         self.logger.info(
@@ -815,7 +850,11 @@ class TileStager:
         # drop duplicated polygons, if config is set to deduplicate here
         if deduplicate_at == "staging":
             if prop_duplicated in gdf.columns:
+                before_dedup = len(gdf)
                 gdf = gdf[~gdf[prop_duplicated]]
+                # Force garbage collection after dropping rows
+                if before_dedup - len(gdf) > 1000:
+                    gc.collect()
 
         self.logger.info(
             f"Finished deduplication in {datetime.now() - dedup_start_time}"
@@ -897,6 +936,8 @@ class TileStager:
             header = True
             mode = "w"
         gdf_summary.to_csv(summary_path, mode=mode, index=False, header=header)
+        # Clean up DataFrame after writing
+        del gdf_summary
 
     def __lock_file(self, path):
         """
