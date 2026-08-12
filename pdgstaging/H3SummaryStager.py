@@ -70,7 +70,7 @@ class H3SummaryStager:
 
     def stage_all(
         self,
-        h3_res: int,
+        h3_res: List[int],  # Changed to accept a list of resolutions
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
@@ -86,29 +86,33 @@ class H3SummaryStager:
 
         out_root = Path(self.tiles.base_dirs["h3"]["path"])
         out_root.mkdir(parents=True, exist_ok=True)
-        master_output = out_root / f"summary_h3r{h3_res}{self.out_ext}"
         
-        if master_output.exists():
-            self.logger.info("Removing existing H3 file to start fresh: %s", master_output)
-            master_output.unlink()
+        # build a dictionary of paths for every requested resolution
+        master_outputs = {}
+        for res in h3_res:
+            out_path = out_root / f"summary_h3r{res}{self.out_ext}"
+            if out_path.exists():
+                self.logger.info("Removing existing H3 file to start fresh: %s", out_path)
+                out_path.unlink()
+            master_outputs[res] = out_path
 
         self.logger.info("Begin H3 staging %s input vector files.", n)
 
         rows = []
         for p in input_paths:
             start = datetime.now()
-            out = None
+            out_dict = None
             ok = False
             err = None
             try:
-                out = self.stage(
+                out_dict = self.stage(
                     path=p,
                     h3_res=h3_res,
                     attr_to_sum=attr_to_sum,
                     attr_to_mean=attr_to_mean,
                     land_polygons_path=land_polygons_path,
                     area_epsg=area_epsg,
-                    output_path=master_output
+                    output_paths=master_outputs
                 )
                 ok = True
             except Exception as e:
@@ -118,8 +122,8 @@ class H3SummaryStager:
             rows.append(
                 {
                     "input_path": str(p),
-                    "output_path": str(out) if out else None,
-                    "h3_res": h3_res,
+                    "output_paths": str(out_dict) if out_dict else None, 
+                    "h3_res": str(h3_res),
                     "ok": ok,
                     "seconds": (datetime.now() - start).total_seconds(),
                     "error": err,
@@ -136,24 +140,31 @@ class H3SummaryStager:
     def stage(
         self,
         path: PathLike,
-        h3_res: int,
+        h3_res: List[int],
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
-        output_path: Optional[PathLike] = None,
-    ) -> Path:
-        if output_path is None:
-            output_path = self._output_path_for_input(path, h3_res)
+        output_paths: Optional[dict] = None,  # Now expects a dict of {res: path}
+    ) -> dict:
+        
+        if output_paths is None:
+            out_root = Path(self.tiles.base_dirs["h3"]["path"])
+            out_root.mkdir(parents=True, exist_ok=True)
+            output_paths = {
+                res: out_root / f"summary_h3r{res}{self.out_ext}" 
+                for res in h3_res
+            }
 
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        lock = self._lock_file(str(output_path))
+        locks = []
+        # Acquire locks for all resolution files
+        for out_path in output_paths.values():
+            locks.append(self._lock_file(str(out_path)))
+            
         try:
             self.gen.build_h3_summary(
                 input_path=path,
-                output_path=output_path,
+                output_paths=output_paths,
                 h3_res=h3_res,
                 land_polygons_path=land_polygons_path,
                 area_epsg=area_epsg,
@@ -161,9 +172,11 @@ class H3SummaryStager:
                 attr_to_mean=attr_to_mean,
             )
         finally:
-            self._release_file(lock)
-
-        return output_path
+            # Ensure all locks are released even if a failure occurs
+            for lock in locks:
+                self._release_file(lock)
+                
+        return output_paths
 
     def _append_summary(self, df: pd.DataFrame) -> None:
         # lock summary so concurrent stage_all() runs don't corrupt the log

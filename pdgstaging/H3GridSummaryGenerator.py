@@ -159,8 +159,8 @@ class H3GridSummaryGenerator:
     def build_h3_summary(
         self,
         input_path: PathLike,
-        output_path: PathLike,
-        h3_res: int,
+        output_paths: dict,
+        h3_res: List[int],
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
         attr_to_sum: Optional[List[str]] = None,
@@ -183,7 +183,7 @@ class H3GridSummaryGenerator:
         if gdf.crs.to_epsg() != 4326:
             gdf = gdf.to_crs(epsg=4326)
 
-        records = []
+        records_by_res = {res: [] for res in h3_res}
 
         gdf_area = None
         if any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique()):
@@ -194,68 +194,78 @@ class H3GridSummaryGenerator:
             if geom is None or geom.is_empty:
                 continue
 
-            h3_indices = self.feature_to_h3_indices(geom, h3_res)
-            if not h3_indices:
-                continue
-
             geom_area = None
             if gdf_area is not None and geom.geom_type in ("Polygon", "MultiPolygon"):
                 geom_area = gdf_area.loc[idx].geometry
 
-            for h in h3_indices:
-                rec = {"h3_index": h, "_count": 1}
+            # calculate metrics for all resolutions requested while the feature is loaded
+            for res in h3_res:
+                h3_indices = self.feature_to_h3_indices(geom, res)
+                if not h3_indices:
+                    continue
 
-                for col in attr_to_sum:
-                    rec[f"sum_{col}"] = row[col]
-                for col in attr_to_mean:
-                    rec[f"mean_{col}"] = row[col]
+                for h in h3_indices:
+                    rec = {"h3_index": h, "_count": 1}
 
-                if geom_area is not None:
-                    cell_poly = self.h3_to_polygon(h)
-                    cell_poly_area = (
-                        gpd.GeoSeries([cell_poly], crs="EPSG:4326")
-                        .to_crs(epsg=area_epsg)
-                        .iloc[0]
-                    )
-                    try:
-                        inter = geom_area.intersection(cell_poly_area)
-                    except GEOSException:
-                        safe_geom = make_valid(geom_area)
-                        safe_cell = make_valid(cell_poly_area)
-                        inter = safe_geom.intersection(safe_cell)
+                    for col in attr_to_sum:
+                        rec[f"sum_{col}"] = row[col]
+                    for col in attr_to_mean:
+                        rec[f"mean_{col}"] = row[col]
 
-                    rec["area_km2"] = (inter.area / 1e6) if not inter.is_empty else 0.0
+                    if geom_area is not None:
+                        cell_poly = self.h3_to_polygon(h)
+                        cell_poly_area = (
+                            gpd.GeoSeries([cell_poly], crs="EPSG:4326")
+                            .to_crs(epsg=area_epsg)
+                            .iloc[0]
+                        )
+                        try:
+                            inter = geom_area.intersection(cell_poly_area)
+                        except GEOSException:
+                            from shapely.validation import make_valid
+                            safe_geom = make_valid(geom_area)
+                            safe_cell = make_valid(cell_poly_area)
+                            inter = safe_geom.intersection(safe_cell)
 
-                records.append(rec)
+                        rec["area_km2"] = (inter.area / 1e6) if not inter.is_empty else 0.0
 
-        if not records:
-            raise RuntimeError("No H3 coverage generated. Check geometries / resolution.")
+                    records_by_res[res].append(rec)
 
-        df = pd.DataFrame(records)
+        # check if no data was generated
+        total_records = sum(len(r) for r in records_by_res.values())
+        if total_records == 0:
+            raise RuntimeError("No H3 coverage generated for any resolution. Check geometries.")
 
-        agg_dict = {"_count": "sum"}
-        for col in attr_to_sum:
-            agg_dict[f"sum_{col}"] = "sum"
-        for col in attr_to_mean:
-            agg_dict[f"mean_{col}"] = "mean"
-        if "area_km2" in df.columns:
-            agg_dict["area_km2"] = "sum"
+        # process each resolution into its own file
+        for res, records in records_by_res.items():
+            if not records:
+                self.logger.warning("No H3 coverage generated for resolution %s. Skipping.", res)
+                continue
 
-        grouped = df.groupby("h3_index", as_index=False).agg(agg_dict)
+            df = pd.DataFrame(records)
 
-        grouped["geometry"] = grouped["h3_index"].apply(self.h3_to_polygon)
-        out_gdf = gpd.GeoDataFrame(grouped, geometry="geometry", crs="EPSG:4326")
+            agg_dict = {"_count": "sum"}
+            for col in attr_to_sum:
+                agg_dict[f"sum_{col}"] = "sum"
+            for col in attr_to_mean:
+                agg_dict[f"mean_{col}"] = "mean"
+            if "area_km2" in df.columns:
+                agg_dict["area_km2"] = "sum"
 
-        if land_polygons_path is not None:
-            out_gdf = self.add_land_metrics(out_gdf, land_polygons_path, area_epsg=area_epsg)
+            grouped = df.groupby("h3_index", as_index=False).agg(agg_dict)
 
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        # if file exists, append to it so we only get one output geopkg for multiple
-        # input files
-        write_mode = "a" if output_path.exists() else "w"
-        out_gdf.to_file(output_path, driver="GPKG", mode=write_mode)
-        self.logger.info("Finished appending H3 summary grid to %s", output_path)
+            grouped["geometry"] = grouped["h3_index"].apply(self.h3_to_polygon)
+            out_gdf = gpd.GeoDataFrame(grouped, geometry="geometry", crs="EPSG:4326")
+
+            if land_polygons_path is not None:
+                out_gdf = self.add_land_metrics(out_gdf, land_polygons_path, area_epsg=area_epsg)
+
+            output_path = Path(output_paths[res])
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # if file exists, append to it so we only get one output geopkg for multiple files
+            write_mode = "a" if output_path.exists() else "w"
+            out_gdf.to_file(output_path, driver="GPKG", mode=write_mode)
 
     def valid_h3_resolution(self, value: str) -> int:
         try:
