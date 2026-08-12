@@ -27,6 +27,7 @@ class H3SummaryStager:
 
     def __init__(
         self,
+        config,
         tiles: Optional[TilePathManager] = None,
         out_base_dir: str = "h3",
         out_ext: str = ".gpkg",
@@ -34,6 +35,7 @@ class H3SummaryStager:
         generator: Optional[H3GridSummaryGenerator] = None,
     ):
         self.logger = logging.getLogger(__name__)
+        self.config = config
         self.tiles = tiles
         self.out_base_dir = out_base_dir
         self.out_ext = out_ext
@@ -54,7 +56,11 @@ class H3SummaryStager:
     def _output_path_for_input(self, input_path: PathLike, h3_res: int) -> Path:
         input_path = Path(input_path)
 
-        input_root = Path(self.tiles.base_dirs["input"]["path"])
+        if self.config.is_stager_enabled():
+            input_root = Path(self.tiles.base_dirs["staged"]["path"])
+        else:
+            input_root = Path(self.tiles.base_dirs["input"]["path"])
+
         try:
             rel = input_path.relative_to(input_root)
         except Exception:
@@ -70,14 +76,18 @@ class H3SummaryStager:
 
     def stage_all(
         self,
-        h3_res: List[int],  # Changed to accept a list of resolutions
+        h3_res: List[int],
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
     ) -> None:
         overall_start = datetime.now()
-        input_paths = self.tiles.get_filenames_from_dir("input")
+
+        if self.config.is_stager_enabled():
+            input_paths = self.tiles.get_filenames_from_dir("staged")
+        else:
+            input_paths = self.tiles.get_filenames_from_dir("input")
         n = len(input_paths)
 
         if n == 0:
@@ -145,7 +155,7 @@ class H3SummaryStager:
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
-        output_paths: Optional[dict] = None,  # Now expects a dict of {res: path}
+        output_paths: Optional[dict] = None,
     ) -> dict:
         
         if output_paths is None:

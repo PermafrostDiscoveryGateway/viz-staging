@@ -23,6 +23,7 @@ PathLike = Union[str, Path]
 class H3GridSummaryGenerator:
     def __init__(
         self,
+        config,
         area_epsg: int = 6933,
         land_polygons_path: Optional[PathLike] = None,
         logger: Optional[logging.Logger] = None,
@@ -35,6 +36,7 @@ class H3GridSummaryGenerator:
         self.land_polygons_path = land_polygons_path
         self.logger = logger or logging.getLogger(__name__)
         self.tiles = tiles
+        self.config = config
         self.out_base_dir = out_base_dir
         self.attr_to_sum = attr_to_sum or []
         self.attr_to_mean = attr_to_mean or []
