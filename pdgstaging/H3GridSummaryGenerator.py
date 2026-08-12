@@ -8,6 +8,8 @@ from typing import Optional, Union, Set, List
 import geopandas as gpd
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
+from shapely.validation import make_valid
+from shapely.errors import GEOSException
 import h3
 import pandas as pd
 import numpy as np
@@ -186,7 +188,13 @@ class H3GridSummaryGenerator:
                         .to_crs(epsg=area_epsg)
                         .iloc[0]
                     )
-                    inter = geom_area.intersection(cell_poly_area)
+                    try:
+                        inter = geom_area.intersection(cell_poly_area)
+                    except GEOSException:
+                        safe_geom = make_valid(geom_area)
+                        safe_cell = make_valid(cell_poly_area)
+                        inter = safe_geom.intersection(safe_cell)
+
                     rec["area_km2"] = (inter.area / 1e6) if not inter.is_empty else 0.0
 
                 records.append(rec)

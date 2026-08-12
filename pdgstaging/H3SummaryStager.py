@@ -157,7 +157,7 @@ class H3SummaryStager:
         return output_path
 
     def _append_summary(self, df: pd.DataFrame) -> None:
-        # lock summary so concurrent stage_all() runs don’t corrupt the log
+        # lock summary so concurrent stage_all() runs don't corrupt the log
         sum_lock = self._lock_file(self.summary_path)
         try:
             csv_path = self.summary_path
