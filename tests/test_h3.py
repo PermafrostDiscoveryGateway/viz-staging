@@ -58,7 +58,6 @@ def test_h3_feature_count_single_resolution(tmp_path: Path, sample_staging_data:
     Tests that the final aggregated H3 GeoPackage correctly accounts 
     for all features across multiple input files for a single zoom level.
     """
-
     h3_res_list = [3]
     out_paths = {3: tmp_path / "final_h3_res3.gpkg"}
 
@@ -113,9 +112,7 @@ def test_h3_feature_count_multi_resolution(tmp_path: Path, sample_staging_data: 
 
         total_features_counted = final_gdf["_count"].sum()
 
-        # At higher resolutions (like res 4), polygons can span multiple H3 cells,
-        # so total `_count` across all cells will be >= 4.
-        assert total_features_counted >= 4, (
+        assert total_features_counted == 4, (
             f"Expected 4 total feature counts for resolution {res}, "
             f"but got {total_features_counted}"
         )
