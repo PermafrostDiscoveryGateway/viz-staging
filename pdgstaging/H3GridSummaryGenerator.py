@@ -208,13 +208,15 @@ class H3GridSummaryGenerator:
 
             grouped = df.groupby("h3_index", as_index=False).agg(agg_dict)
 
-            # Define output chunks directory (e.g., adjacent to where the final gpkg will live)
             output_path = Path(output_paths[res])
             chunk_dir = output_path.parent / "chunks"
             chunk_dir.mkdir(parents=True, exist_ok=True)
+
+            tile_id = f"{input_path.parent.parent.name}_{input_path.parent.name}_{input_path.stem}"
             
-            # Save directly to parquet (NO geometries generated here!)
-            chunk_path = chunk_dir / f"res_{res}_chunk_{input_path.stem}.parquet"
+            chunk_filename = f"res_{res}_chunk_{tile_id}.parquet"
+            chunk_path = chunk_dir / chunk_filename
+            
             grouped.to_parquet(chunk_path)
 
     def combine_h3_summaries(
