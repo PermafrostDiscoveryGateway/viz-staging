@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 import pandas as pd
 import geopandas as gpd
+import h3
 from shapely.geometry import Polygon
 from pdgstaging import H3GridSummaryGenerator 
 
@@ -17,7 +18,7 @@ def sample_staging_data(tmp_path: Path):
     p2 = Polygon([(-149.5, 65.5), (-149.5, 66.5), (-148.5, 66.5), (-148.5, 65.5)])
     
     df1 = pd.DataFrame({
-        "carbon_stock": [100, 200],  
+        "rocks": [100, 200],  
         "temperature": [-5.0, -4.0], 
         "staging_centroid_within_tile": [True, True]
     })
@@ -30,7 +31,7 @@ def sample_staging_data(tmp_path: Path):
     p4 = Polygon([(-149.8, 65.8), (-149.8, 66.8), (-148.8, 66.8), (-148.8, 65.8)])
     
     df2 = pd.DataFrame({
-        "carbon_stock": [300, 400],
+        "rocks": [300, 400],
         "temperature": [-6.0, -7.0],
         "staging_centroid_within_tile": [True, True]
     })
@@ -48,7 +49,7 @@ def h3_stager():
     """
     return H3GridSummaryGenerator(
         config=None,
-        attr_to_sum=["carbon_stock"],
+        attr_to_sum=["rocks"],
         attr_to_mean=["temperature"]
     )
 
@@ -161,4 +162,122 @@ def test_h3_area_calculation_multi_resolution(
         assert total_calculated_area_km2 == pytest.approx(expected_area_km2, rel=1e-3), (
             f"Resolution {res} calculated total area {total_calculated_area_km2} km², "
             f"expected {expected_area_km2} km²"
+        )
+
+def test_h3_sum_aggregation(
+    tmp_path: Path, sample_staging_data: list, h3_stager
+):
+    """
+    Tests that mean attributes are aggregated correctly (avoiding mean-of-means) 
+    """
+    h3_res_list = [3]  # Test on one resolution for simplicity
+    out_paths = {
+        3: tmp_path / "final_h3_mean_res3.gpkg",
+    }
+
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path,
+            output_paths=out_paths,
+            h3_res=h3_res_list
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list
+    )
+    
+    all_dfs = []
+    for file_path in sample_staging_data:
+        df = gpd.read_file(file_path)
+        
+        # Calculate exactly which cell each polygon will fall into based on its centroid
+        df['centroid'] = df.geometry.centroid
+        df['h3_index'] = df.apply(
+            lambda row: h3.latlng_to_cell(row.centroid.y, row.centroid.x, 3), 
+            axis=1
+        )
+        all_dfs.append(df)
+        
+    raw_combined = pd.concat(all_dfs, ignore_index=True)
+    
+    expected_grouped = raw_combined.groupby('h3_index').agg(
+        expected_rock_count=('rocks', 'sum'),
+    ).reset_index()
+
+    final_file = out_paths[3]
+    assert final_file.exists(), "Final GeoPackage was not created."
+    
+    final_gdf = gpd.read_file(final_file)
+    
+    merged = final_gdf.merge(expected_grouped, on='h3_index', how='left')
+    
+    assert "sum_rocks" in merged.columns
+    assert "_count" in merged.columns
+    
+    for idx, row in merged.iterrows():
+        assert row["sum_rocks"] == pytest.approx(row["expected_rock_count"]), (
+            f"Cell {row['h3_index']} expected number rocks {row['expected_rock_count']}, got {row['sum_rocks']} "
+        )
+
+
+def test_h3_mean_aggregation(
+    tmp_path: Path, sample_staging_data: list, h3_stager
+):
+    """
+    Tests that mean attributes are aggregated correctly (avoiding mean-of-means) 
+    """
+    h3_res_list = [3]
+    out_paths = {
+        3: tmp_path / "final_h3_mean_res3.gpkg",
+    }
+
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path,
+            output_paths=out_paths,
+            h3_res=h3_res_list
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list
+    )
+    
+    all_dfs = []
+    for file_path in sample_staging_data:
+        df = gpd.read_file(file_path)
+        
+        # Calculate exactly which cell each polygon will fall into based on its centroid
+        df['centroid'] = df.geometry.centroid
+        df['h3_index'] = df.apply(
+            lambda row: h3.latlng_to_cell(row.centroid.y, row.centroid.x, 3), 
+            axis=1
+        )
+        all_dfs.append(df)
+        
+    raw_combined = pd.concat(all_dfs, ignore_index=True)
+    
+    # Group by the h3_index and calculate the true mean and sum
+    expected_grouped = raw_combined.groupby('h3_index').agg(
+        expected_count=('temperature', 'size'),
+        expected_mean_temp=('temperature', 'mean'),
+    ).reset_index()
+
+    final_file = out_paths[3]
+    assert final_file.exists(), "Final GeoPackage was not created."
+    
+    final_gdf = gpd.read_file(final_file)
+    
+    merged = final_gdf.merge(expected_grouped, on='h3_index', how='left')
+    
+    assert "mean_temperature" in merged.columns
+    assert "_count" in merged.columns
+    
+    for idx, row in merged.iterrows():
+        assert row["_count"] == row["expected_count"], (
+            f"Cell {row['h3_index']} expected count {row['expected_count']}, got {row['_count']}"
+        )
+        assert row["mean_temperature"] == pytest.approx(row["expected_mean_temp"]), (
+            f"Cell {row['h3_index']} expected mean temp {row['expected_mean_temp']}, got {row['mean_temperature']} "
         )

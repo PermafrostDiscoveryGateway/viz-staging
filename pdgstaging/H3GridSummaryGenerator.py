@@ -202,7 +202,7 @@ class H3GridSummaryGenerator:
             for col in attr_to_sum:
                 agg_dict[f"sum_{col}"] = "sum"
             for col in attr_to_mean:
-                agg_dict[f"mean_{col}"] = "mean"
+                agg_dict[f"mean_{col}"] = "sum"
             if "area_km2" in df.columns:
                 agg_dict["area_km2"] = "sum"
 
@@ -240,7 +240,7 @@ class H3GridSummaryGenerator:
         for col in attr_to_sum:
             agg_dict[f"sum_{col}"] = "sum"
         for col in attr_to_mean:
-            agg_dict[f"mean_{col}"] = "mean" # Reminder: true mean requires dividing final sum by final count
+            agg_dict[f"mean_{col}"] = "sum"
 
         for res in h3_res:
             output_path = Path(output_paths[res])
@@ -262,6 +262,9 @@ class H3GridSummaryGenerator:
                 agg_dict["area_km2"] = "sum"
 
             final_grouped = combined_df.groupby("h3_index", as_index=False).agg(agg_dict)
+
+            for col in attr_to_mean:
+                final_grouped[f"mean_{col}"] = final_grouped[f"mean_{col}"] / final_grouped["_count"]
             
             final_grouped["geometry"] = final_grouped["h3_index"].apply(self.h3_to_polygon)
             out_gdf = gpd.GeoDataFrame(final_grouped, geometry="geometry", crs="EPSG:4326")
