@@ -10,6 +10,7 @@ from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 from shapely.errors import GEOSException
+from shapely.ops import transform
 import h3
 import pandas as pd
 import numpy as np
@@ -41,57 +42,23 @@ class H3GridSummaryGenerator:
         self.attr_to_sum = attr_to_sum or []
         self.attr_to_mean = attr_to_mean or []
 
-    def polygon_to_h3_cells(self, geom, res: int) -> Set[str]:
+    def feature_to_h3_index(self, geom, res: int) -> Optional[str]:
         """
-        Converts a Shapely geometry into a set of H3 cell indices.
-
-        Uses the standard H3 algorithm to find all cells whose centroids fall 
-        within the given polygon. If the polygon is too small or narrow to cover 
-        any cell centroids, it returns the single H3 cell that contains a representative
-        point inside the geometry. A representative point is chosen instead of the
-        centroid because mathematical centroids might lie outside of the polygon (eg: 
-        for a crescent shaped polygon).
-        """
-        if geom is None or geom.is_empty:
-            return set()
-
-        try:
-            geo = geom.__geo_interface__
-        except AttributeError:
-            return set()
-
-        cells = set(h3.geo_to_cells(geo, res))
-        if not cells:
-            rp = geom.representative_point()
-            cells = {h3.latlng_to_cell(rp.y, rp.x, res)}
-        return cells
-
-    def feature_to_h3_indices(self, geom, res: int) -> Set[str]:
-        """
-        Routes a given geometry to the appropriate H3 cell conversion logic based 
-        on its type.
+        Routes a given geometry to a single H3 cell based on its center point.
         
-        Points use the standard H3 method, polygons use the methods above.
+        Points use their exact coordinates. Polygons, MultiPolygons, and other
+        geometries use their computed centroid.
         """
         if geom is None or geom.is_empty:
-            return set()
+            return None
 
         if geom.geom_type == "Point":
-            return {h3.latlng_to_cell(geom.y, geom.x, res)}
+            return h3.latlng_to_cell(geom.y, geom.x, res)
 
-        if geom.geom_type in ("Polygon", "MultiPolygon"):
-            return self.polygon_to_h3_cells(geom, res)
-
-        try:
-            geo = geom.__geo_interface__
-        except AttributeError:
-            return set()
-
-        cells = set(h3.geo_to_cells(geo, res))
-        if not cells:
-            rp = geom.representative_point()
-            cells = {h3.latlng_to_cell(rp.y, rp.x, res)}
-        return cells
+        # for Polygons, MultiPolygons, and all other geometries:
+        # calculate the centroid and assign the entire feature to that single cell
+        centroid = geom.centroid
+        return h3.latlng_to_cell(centroid.y, centroid.x, res)
 
     def h3_to_polygon(self, h: str) -> Polygon:
         """
@@ -163,21 +130,19 @@ class H3GridSummaryGenerator:
         input_path: PathLike,
         output_paths: dict,
         h3_res: List[int],
-        land_polygons_path: Optional[PathLike] = None,
+        land_polygons_path: Optional[PathLike] = None, # Not used until combination step, but kept for signature
         area_epsg: Optional[int] = None,
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
     ) -> None:
         if area_epsg is None:
             area_epsg = self.area_epsg
-        if land_polygons_path is None:
-            land_polygons_path = self.land_polygons_path
-
         if attr_to_sum is None:
             attr_to_sum = self.attr_to_sum
         if attr_to_mean is None:
             attr_to_mean = self.attr_to_mean
 
+        input_path = Path(input_path)
         gdf = gpd.read_file(input_path)
 
         if gdf.crs is None:
@@ -187,58 +152,45 @@ class H3GridSummaryGenerator:
 
         records_by_res = {res: [] for res in h3_res}
 
-        gdf_area = None
-        if any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique()):
-            gdf_area = gdf.to_crs(epsg=area_epsg)
+        # filter out polygons duplicated across tiles from staging step
+        if 'staging_centroid_within_tile' in gdf.columns:
+            gdf = gdf[gdf['staging_centroid_within_tile'] == True]
+        if gdf.empty:
+            self.logger.info("All features filtered out (centroids in other tiles). Skipping file.")
+            return
 
-        for idx, row in gdf.iterrows():
+        has_polygons = any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique())
+        if has_polygons:
+            gdf["area_km2"] = gdf.to_crs(epsg=area_epsg).geometry.area / 1e6
+        else:
+            gdf["area_km2"] = 0.0
+
+        for row in gdf.itertuples(index=True):
+            idx = row.Index
             geom = row.geometry
             if geom is None or geom.is_empty:
                 continue
 
-            geom_area = None
-            if gdf_area is not None and geom.geom_type in ("Polygon", "MultiPolygon"):
-                geom_area = gdf_area.loc[idx].geometry
-
             # calculate metrics for all resolutions requested while the feature is loaded
             for res in h3_res:
-                h3_indices = self.feature_to_h3_indices(geom, res)
-                if not h3_indices:
+                h3_index = self.feature_to_h3_index(geom, res)
+                if not h3_index:
                     continue
 
-                for h in h3_indices:
-                    rec = {"h3_index": h, "_count": 1}
+                rec = {"h3_index": h3_index, "_count": 1}
 
-                    for col in attr_to_sum:
-                        rec[f"sum_{col}"] = row[col]
-                    for col in attr_to_mean:
-                        rec[f"mean_{col}"] = row[col]
+                for col in attr_to_sum:
+                    rec[f"sum_{col}"] = getattr(row, col)
+                for col in attr_to_mean:
+                    # TODO: get math right here
+                    rec[f"mean_{col}"] = getattr(row, col)
 
-                    if geom_area is not None:
-                        cell_poly = self.h3_to_polygon(h)
-                        cell_poly_area = (
-                            gpd.GeoSeries([cell_poly], crs="EPSG:4326")
-                            .to_crs(epsg=area_epsg)
-                            .iloc[0]
-                        )
-                        try:
-                            inter = geom_area.intersection(cell_poly_area)
-                        except GEOSException:
-                            from shapely.validation import make_valid
-                            safe_geom = make_valid(geom_area)
-                            safe_cell = make_valid(cell_poly_area)
-                            inter = safe_geom.intersection(safe_cell)
+                if has_polygons:
+                    rec["area_km2"] = row.area_km2
 
-                        rec["area_km2"] = (inter.area / 1e6) if not inter.is_empty else 0.0
+                records_by_res[res].append(rec)
 
-                    records_by_res[res].append(rec)
-
-        # check if no data was generated
-        total_records = sum(len(r) for r in records_by_res.values())
-        if total_records == 0:
-            raise RuntimeError("No H3 coverage generated for any resolution. Check geometries.")
-
-        # process each resolution into its own file
+        # process each resolution into its own PARQUET chunk
         for res, records in records_by_res.items():
             if not records:
                 self.logger.warning("No H3 coverage generated for resolution %s. Skipping.", res)
@@ -256,19 +208,72 @@ class H3GridSummaryGenerator:
 
             grouped = df.groupby("h3_index", as_index=False).agg(agg_dict)
 
-            grouped["geometry"] = grouped["h3_index"].apply(self.h3_to_polygon)
-            out_gdf = gpd.GeoDataFrame(grouped, geometry="geometry", crs="EPSG:4326")
+            # Define output chunks directory (e.g., adjacent to where the final gpkg will live)
+            output_path = Path(output_paths[res])
+            chunk_dir = output_path.parent / "chunks"
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save directly to parquet (NO geometries generated here!)
+            chunk_path = chunk_dir / f"res_{res}_chunk_{input_path.stem}.parquet"
+            grouped.to_parquet(chunk_path)
+
+    def combine_h3_summaries(
+        self,
+        output_paths: dict,
+        h3_res: List[int],
+        land_polygons_path: Optional[PathLike] = None,
+        area_epsg: Optional[int] = None,
+        attr_to_sum: Optional[List[str]] = None,
+        attr_to_mean: Optional[List[str]] = None,
+    ) -> None:
+        """Runs once after all chunks are generated to produce the final GPKGs."""
+        if area_epsg is None:
+            area_epsg = self.area_epsg
+        if land_polygons_path is None:
+            land_polygons_path = self.land_polygons_path
+        if attr_to_sum is None:
+            attr_to_sum = self.attr_to_sum
+        if attr_to_mean is None:
+            attr_to_mean = self.attr_to_mean
+
+        agg_dict = {"_count": "sum"}
+        for col in attr_to_sum:
+            agg_dict[f"sum_{col}"] = "sum"
+        for col in attr_to_mean:
+            agg_dict[f"mean_{col}"] = "mean" # Reminder: true mean requires dividing final sum by final count
+
+        for res in h3_res:
+            output_path = Path(output_paths[res])
+            chunk_dir = output_path.parent / "chunks"
+            
+            if not chunk_dir.exists():
+                self.logger.warning("No chunks directory found for res %s. Skipping combination.", res)
+                continue
+                
+            chunk_files = list(chunk_dir.glob(f"res_{res}_chunk_*.parquet"))
+            if not chunk_files:
+                continue
+            
+            self.logger.info("Combining %d chunks for resolution %s...", len(chunk_files), res)
+            
+            combined_df = pd.concat([pd.read_parquet(f) for f in chunk_files], ignore_index=True)
+            
+            if "area_km2" in combined_df.columns:
+                agg_dict["area_km2"] = "sum"
+
+            final_grouped = combined_df.groupby("h3_index", as_index=False).agg(agg_dict)
+            
+            final_grouped["geometry"] = final_grouped["h3_index"].apply(self.h3_to_polygon)
+            out_gdf = gpd.GeoDataFrame(final_grouped, geometry="geometry", crs="EPSG:4326")
 
             if land_polygons_path is not None:
                 out_gdf = self.add_land_metrics(out_gdf, land_polygons_path, area_epsg=area_epsg)
-
-            output_path = Path(output_paths[res])
-            output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # if file exists, append to it so we only get one output geopkg for multiple files
-            write_mode = "a" if output_path.exists() else "w"
-            out_gdf.to_file(output_path, driver="GPKG", mode=write_mode)
+            out_gdf.to_file(output_path, driver="GPKG", mode="w")
+            self.logger.info("Finished writing final GeoPackage for resolution %s.", res)
 
+
+    
     def valid_h3_resolution(self, value: str) -> int:
         try:
             ivalue = int(value)

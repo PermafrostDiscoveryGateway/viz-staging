@@ -140,6 +140,16 @@ class H3SummaryStager:
                     "datetime": datetime.now().isoformat(),
                 }
             )
+        
+        self.logger.info("All chunks generated. Combining into final GeoPackages...")
+        self.gen.combine_h3_summaries(
+            output_paths=master_outputs,
+            h3_res=h3_res,
+            land_polygons_path=land_polygons_path,
+            area_epsg=area_epsg,
+            attr_to_sum=attr_to_sum,
+            attr_to_mean=attr_to_mean
+        )
 
         df = pd.DataFrame(rows)
         self._append_summary(df)
@@ -205,6 +215,7 @@ class H3SummaryStager:
             )
         finally:
             self._release_file(sum_lock)
+
 
     def _lock_file(self, path: str) -> FileLock:
         lock = FileLock(path + ".lock")
