@@ -182,7 +182,6 @@ class H3GridSummaryGenerator:
                 for col in attr_to_sum:
                     rec[f"sum_{col}"] = getattr(row, col)
                 for col in attr_to_mean:
-                    # TODO: get math right here
                     rec[f"mean_{col}"] = getattr(row, col)
 
                 if has_polygons:
