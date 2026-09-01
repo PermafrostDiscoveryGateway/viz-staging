@@ -1,5 +1,7 @@
 import logging
 import os
+import random
+import time
 import uuid
 import warnings
 import gc
@@ -500,6 +502,20 @@ class TileStager:
         grid.TILE_NAME = self.props["tile"]
         return grid
 
+    def _to_file_with_retry(self, data, tile_path, mode, attempts=8, base_sleep=0.2):
+        last = None
+        for i in range(attempts):
+            try:
+                data.to_file(tile_path, mode=mode)
+                return
+            except RuntimeError as e:
+                msg = str(e).lower()
+                if "database is locked" not in msg and "sqlite" not in msg:
+                    raise
+                last = e
+                time.sleep(base_sleep * (2**i))
+        raise last
+
     def save_tiles(
         self,
         gdf=None,
@@ -545,9 +561,11 @@ class TileStager:
 
             # Get the tile path
             tile_path = self.tiles.path_from_tile(tile, base_dir="staged")
-            self.tiles.create_dirs(tile_path)
-
-            # Lock the tile so that multiple processes don't try to write to
+            os.makedirs(os.path.dirname(tile_path), exist_ok=True)
+            try:
+                self.tiles.create_dirs(os.path.dirname(tile_path))
+            except Exception:
+                pass
             lock = self.__lock_file(tile_path)
 
             # Track the start time, the tile, and the number of vectors
@@ -740,10 +758,11 @@ class TileStager:
         """
 
         try:
-            # Ignore the FutureWarning raised from geopandas issue 2347
+            os.environ.setdefault("OGR_SQLITE_BUSY_TIMEOUT", "10000")
+            os.environ.setdefault("SQLITE_BUSY_TIMEOUT", "10000")
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
-                data.to_file(tile_path, mode=mode)
+                self._to_file_with_retry(data, tile_path, mode=mode)
 
             # convert each tile from string format to morecantile format
             # so it can be added to summary
@@ -939,7 +958,7 @@ class TileStager:
         # Clean up DataFrame after writing
         del gdf_summary
 
-    def __lock_file(self, path):
+    def __lock_file(self, path, max_attempts=600, min_sleep=0.5, max_sleep=3.0):
         """
         Lock a file for writing.
 
@@ -953,23 +972,39 @@ class TileStager:
         lock : FileLock
             The lock object
         """
-        lock_path = path + ".lock"
-        lock = FileLock(lock_path)
-        lock.acquire()
-        return lock
+        lock_path = str(path) + ".lock"
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
 
-    def __release_file(self, lock):
+        for attempt in range(max_attempts):
+            try:
+                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                return lock_path 
+            except FileExistsError:
+                sleep_time = min_sleep + random.random() * (max_sleep - min_sleep)
+                self.logger.debug(
+                    f"Lock busy for {lock_path}, attempt {attempt + 1}/{max_attempts}, "
+                    f"retrying in {sleep_time:.1f}s"
+                )
+                time.sleep(sleep_time)
+
+        raise RuntimeError(
+            f"Could not acquire lock for {path} after {max_attempts} attempts "
+        )
+
+    def __release_file(self, lock_path):
         """
-        Release a file lock. Remove the lock file.
+        Release a file lock by removing the lock file.
 
         Parameters
         ----------
         lock : FileLock
             The lock to release
         """
-        lock.release()
-        if os.path.exists(lock.lock_file):
-            os.remove(lock.lock_file)
+        try:
+            os.remove(lock_path)
+        except OSError:
+            pass 
 
     def get_default_base_dir(self):
         """
@@ -1039,7 +1074,7 @@ class TileStager:
             base_dirs=self.base_dirs,
         )
 
-        return None
+        return self.tiles
 
     def csv_to_parquet(self):
         """
