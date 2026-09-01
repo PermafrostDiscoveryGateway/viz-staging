@@ -159,6 +159,13 @@ class H3GridSummaryGenerator:
             self.logger.info("All features filtered out (centroids in other tiles). Skipping file.")
             return
 
+        # filter out duplicate polygons across tiles from staging step
+        if 'staging_duplicated' in gdf.columns:
+            gdf = gdf[gdf['staging_duplicated'] == True]
+        if gdf.empty:
+            self.logger.info("All features filtered out (duplicated features). Skipping file.")
+            return
+
         has_polygons = any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique())
         if has_polygons:
             gdf["area_km2"] = gdf.to_crs(epsg=area_epsg).geometry.area / 1e6
