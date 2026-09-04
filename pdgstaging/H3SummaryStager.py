@@ -19,10 +19,12 @@ PathLike = Union[str, Path]
 
 
 class H3SummaryStager:
-    """
-    Runs H3GridSummaryGenerator over all input vectors and writes one
-    H3 summary GeoPackage per input file under a configured base_dir.
-    Optionally records a CSV/Parquet run summary.
+    """Executes H3 grid summarization across input vector datasets.
+
+    This class runs the H3GridSummaryGenerator over all provided input 
+    vectors and writes one H3 summary GeoPackage per input file into a 
+    configured base directory. It can optionally record a run summary in 
+    CSV or Parquet format for downstream tracking.
     """
 
     def __init__(
@@ -34,6 +36,21 @@ class H3SummaryStager:
         summary_filename: str = "h3_summary.csv",
         generator: Optional[H3GridSummaryGenerator] = None,
     ):
+        """Initializes the H3SummaryStager.
+
+        Args:
+            config: The configuration manager or dictionary containing global settings.
+            tiles (Optional[TilePathManager], optional): Manager for resolving 
+                input and output tile paths. Defaults to None.
+            out_base_dir (str, optional): The base directory for writing output 
+                GeoPackage files. Defaults to "h3".
+            out_ext (str, optional): The file extension for the generated 
+                summaries. Defaults to ".gpkg".
+            summary_filename (str, optional): The name of the run summary file 
+                used for tracking. Defaults to "h3_summary.csv".
+            generator (Optional[H3GridSummaryGenerator], optional): The generator 
+                instance used to process the grid summaries. Defaults to None.
+        """
         self.logger = logging.getLogger(__name__)
         self.config = config
         self.tiles = tiles
@@ -54,6 +71,15 @@ class H3SummaryStager:
         )
 
     def _output_path_for_input(self, input_path: PathLike, h3_res: int) -> Path:
+        """Determines the target output file path for a given input path and H3 resolution.
+
+        Args:
+            input_path (PathLike): The file path to the input dataset.
+            h3_res (int): The H3 resolution level used for file naming.
+
+        Returns:
+            Path: The fully resolved, absolute destination path for the output file.
+        """
         input_path = Path(input_path)
 
         if self.config.is_stager_enabled():
@@ -82,6 +108,24 @@ class H3SummaryStager:
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
     ) -> None:
+        """Executes full H3 staging and aggregation across all input vector files.
+
+        Iterates over input vector files (staged or raw, depending on configuration),
+        generates intermediate H3 summary chunks for each requested resolution, and
+        combines those chunks into unified output GeoPackage files. Execution metrics
+        and errors for each file are tracked and logged to a run summary file.
+
+        Args:
+            h3_res (List[int]): A list of H3 resolution levels to generate summaries for.
+            attr_to_sum (Optional[List[str]], optional): List of column names to aggregate 
+                using summation. Defaults to None.
+            attr_to_mean (Optional[List[str]], optional): List of column names to aggregate 
+                using mean calculations. Defaults to None.
+            land_polygons_path (Optional[PathLike], optional): File path to a vector 
+                dataset of land boundaries used for land area calculations. Defaults to None.
+            area_epsg (Optional[int], optional): EPSG code for the equal-area CRS used 
+                in area calculations. Defaults to None.
+        """
         overall_start = datetime.now()
 
         if self.config.is_stager_enabled():
@@ -167,6 +211,33 @@ class H3SummaryStager:
         area_epsg: Optional[int] = None,
         output_paths: Optional[dict] = None,
     ) -> dict:
+        """Processes a single input vector file and builds its H3 summary chunks.
+
+        Resolves the input path, ensures the intermediate output structure exists,
+        and delegates execution to the generator to create intermediate Parquet
+        chunks for each requested H3 resolution. All resolutions are done at the same
+        time to ensure each input file is only opened once.
+
+        Args:
+            path (PathLike): File path to the input vector dataset to process.
+            h3_res (List[int]): A list of H3 resolution levels to generate 
+                summaries for.
+            attr_to_sum (Optional[List[str]], optional): List of column names to 
+                aggregate using summation. Defaults to None.
+            attr_to_mean (Optional[List[str]], optional): List of column names to 
+                aggregate using mean calculations. Defaults to None.
+            land_polygons_path (Optional[PathLike], optional): Path to the vector 
+                dataset of land boundaries. Defaults to None.
+            area_epsg (Optional[int], optional): EPSG code for the equal-area CRS 
+                used in area calculations. Defaults to None.
+            output_paths (Optional[dict], optional): A dictionary mapping H3 
+                resolutions (int) to their target final output paths (PathLike). 
+                Defaults to None.
+
+        Returns:
+            dict: A dictionary mapping each H3 resolution to its corresponding 
+                generated output path.
+        """
         
         if output_paths is None:
             out_root = Path(self.tiles.base_dirs["h3"]["path"])
@@ -199,7 +270,12 @@ class H3SummaryStager:
         return output_paths
 
     def _append_summary(self, df: pd.DataFrame) -> None:
-        # lock summary so concurrent stage_all() runs don't corrupt the log
+        """Appends execution metrics to a CSV log and updates a Parquet summary file.
+
+        Args:
+            df (pd.DataFrame): DataFrame containing summary rows and execution 
+                metrics to log.
+        """
         sum_lock = self._lock_file(self.summary_path)
         try:
             csv_path = self.summary_path
@@ -218,11 +294,24 @@ class H3SummaryStager:
 
 
     def _lock_file(self, path: str) -> FileLock:
+        """Acquires a file lock to prevent concurrent process race conditions.
+
+        Args:
+            path (str): The file path for which to create the lock.
+
+        Returns:
+            FileLock: An acquired `FileLock` object managing the lock lifecycle.
+        """
         lock = FileLock(path + ".lock")
         lock.acquire()
         return lock
 
     def _release_file(self, lock: FileLock) -> None:
+        """Releases an acquired file lock and removes the associated lock file.
+
+        Args:
+            lock (FileLock): The `FileLock` instance to release and clean up.
+        """
         lock.release()
         if os.path.exists(lock.lock_file):
             os.remove(lock.lock_file)

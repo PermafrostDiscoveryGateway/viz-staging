@@ -43,11 +43,18 @@ class H3GridSummaryGenerator:
         self.attr_to_mean = attr_to_mean or []
 
     def feature_to_h3_index(self, geom, res: int) -> Optional[str]:
-        """
-        Routes a given geometry to a single H3 cell based on its center point.
+        """Routes a given geometry to a single H3 cell based on its center point.
         
         Points use their exact coordinates. Polygons, MultiPolygons, and other
         geometries use their computed centroid.
+
+        Args:
+            geom: The Shapely geometry object to process (e.g., Point, Polygon).
+            res (int): The H3 resolution level to use for the cell index.
+
+        Returns:
+            Optional[str]: The H3 cell index string, or None if the geometry 
+                is None or empty.
         """
         if geom is None or geom.is_empty:
             return None
@@ -61,8 +68,17 @@ class H3GridSummaryGenerator:
         return h3.latlng_to_cell(centroid.y, centroid.x, res)
 
     def h3_to_polygon(self, h: str) -> Polygon:
-        """
-        Assigns geometry to an H3 cell, needed to get the cells back on a map.
+        """Assigns geometry to an H3 cell, needed to get the cells back on a map.
+
+        Converts the boundary of an H3 cell index from latitude/longitude 
+        coordinates into a projected Shapely Polygon.
+
+        Args:
+            h (str): The H3 cell index string to convert.
+
+        Returns:
+            Polygon: A Shapely Polygon representing the geographic boundary 
+                of the H3 cell.
         """
         boundary = h3.cell_to_boundary(h)  # list[(lat, lon)]
         boundary_xy = [(lon, lat) for lat, lon in boundary]
@@ -74,8 +90,7 @@ class H3GridSummaryGenerator:
         land_polygons_path: PathLike,
         area_epsg: int = 6933,
     ) -> gpd.GeoDataFrame:
-        """
-        Overlays the generated H3 grid with a land polygon dataset to calculate 
+        """Overlays the generated H3 grid with a land polygon dataset to calculate 
         land-based area metrics for each cell.
         
         The method projects both datasets to an equal-area coordinate reference 
@@ -83,6 +98,17 @@ class H3GridSummaryGenerator:
         square kilometers (`land_area_km2`) and the percentage of the cell covered by 
         land (`land_fraction`). If feature area data is present, it also calculates the
         feature's coverage relative strictly to the land area.
+
+        Args:
+            h3_gdf (gpd.GeoDataFrame): The GeoDataFrame containing H3 grid cells.
+            land_polygons_path (PathLike): The file path to the vector dataset 
+                representing land boundaries.
+            area_epsg (int, optional): The EPSG code for the equal-area coordinate 
+                reference system used for accurate area calculations. Defaults to 6933.
+
+        Returns:
+            gpd.GeoDataFrame: The updated GeoDataFrame with appended land metric 
+                columns (`land_area_km2`, `land_fraction`, and potentially others).
         """
         land = gpd.read_file(land_polygons_path)
         self.logger.info("Finished reading land polygons")
@@ -135,6 +161,29 @@ class H3GridSummaryGenerator:
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
     ) -> None:
+        """Reads a spatial dataset, aggregates features into H3 cells, and saves Parquet chunks.
+
+        This method reads the input vector data, ensures it is in EPSG:4326, filters 
+        out duplicated geometries from the staging step, and assigns each feature to an 
+        H3 grid cell for every requested resolution. It then groups the data by H3 cell, 
+        aggregates the specified attributes, and writes the summarized data out as 
+        intermediate Parquet chunks for later combination.
+
+        Args:
+            input_path (PathLike): The file path to the input spatial dataset.
+            output_paths (dict): A dictionary mapping H3 resolutions (int) to their 
+                intended final output paths (PathLike). Used to route chunk directories.
+            h3_res (List[int]): A list of H3 resolution levels to generate summaries for.
+            land_polygons_path (Optional[PathLike], optional): Path to land polygons 
+                dataset. Unused in this step but retained for signature compatibility. 
+                Defaults to None.
+            area_epsg (Optional[int], optional): EPSG code for the equal-area CRS used 
+                to calculate polygon areas. Defaults to the instance's area_epsg.
+            attr_to_sum (Optional[List[str]], optional): List of column names to 
+                aggregate using a sum function. Defaults to the instance's attr_to_sum.
+            attr_to_mean (Optional[List[str]], optional): List of column names to 
+                aggregate using a mean function. Defaults to the instance's attr_to_mean.
+        """
         if area_epsg is None:
             area_epsg = self.area_epsg
         if attr_to_sum is None:
@@ -234,7 +283,29 @@ class H3GridSummaryGenerator:
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
     ) -> None:
-        """Runs once after all chunks are generated to produce the final GPKGs."""
+        """Aggregates intermediate Parquet chunks into final GeoPackage datasets.
+
+        Runs once after all chunks are generated. This method reads the intermediate 
+        Parquet files for each resolution, aggregates the counts and attribute sums, 
+        calculates final attribute means (by dividing the aggregated sum by the total 
+        count), and generates spatial geometries for the H3 cells. Optionally calculates 
+        land coverage metrics before writing the final output to GeoPackage files.
+
+        Args:
+            output_paths (dict): A dictionary mapping H3 resolutions (int) to their 
+                target GeoPackage output file paths (PathLike).
+            h3_res (List[int]): A list of H3 resolution levels to combine and output.
+            land_polygons_path (Optional[PathLike], optional): File path to a vector 
+                dataset of land boundaries used to calculate land coverage metrics. 
+                Defaults to the instance's land_polygons_path.
+            area_epsg (Optional[int], optional): The EPSG code for the equal-area 
+                coordinate reference system used in area calculations. Defaults to 
+                the instance's area_epsg.
+            attr_to_sum (Optional[List[str]], optional): List of column names that 
+                were aggregated by summation. Defaults to the instance's attr_to_sum.
+            attr_to_mean (Optional[List[str]], optional): List of column names that 
+                require a final mean calculation. Defaults to the instance's attr_to_mean.
+        """
         if area_epsg is None:
             area_epsg = self.area_epsg
         if land_polygons_path is None:
@@ -286,6 +357,18 @@ class H3GridSummaryGenerator:
 
     
     def valid_h3_resolution(self, value: str) -> int:
+        """Validates and parses an H3 resolution value.
+
+        Args:
+            value (str): The string representation of the H3 resolution to validate.
+
+        Raises:
+            argparse.ArgumentTypeError: If the value is not a valid integer or 
+                if it falls outside the range of 1 to 15.
+
+        Returns:
+            int: The validated H3 resolution as an integer.
+        """
         try:
             ivalue = int(value)
         except ValueError:
