@@ -4,7 +4,6 @@ import pandas as pd
 import uuid
 import itertools
 import warnings
-import gc
 
 import logging
 
@@ -419,16 +418,10 @@ def deduplicate_neighbors(
     to_return = label_duplicates(to_return, prop_duplicated)
 
     if prop_duplicated in to_return.columns:
-        if True in to_return[prop_duplicated].values:
-            sum_true = (to_return[prop_duplicated] == True).value_counts()[True]
-            logger.info(
-                f"Sum of True values in the {prop_duplicated} col is: {sum_true}"
-            )
-        else:
-            sum_true = 0
-            logger.info(
-                f"Sum of True values in the {prop_duplicated} col is: {sum_true}"
-            )
+        sum_true = to_return[prop_duplicated].astype(bool).sum()
+        logger.info(
+            f"Sum of True values in the {prop_duplicated} col is: {sum_true}"
+        )
     else:
         logger.info(f"{prop_duplicated} is not a column present after labeling.")
 
@@ -499,7 +492,7 @@ def deduplicate_by_footprint(
         This will be integrated again in a future release.
     """
 
-    logger.info(f"Executing footprint deduplication.")
+    logger.info("Executing footprint deduplication.")
 
     gdf = gdf.copy()
 
@@ -512,7 +505,7 @@ def deduplicate_by_footprint(
 
     # subset the gdf to just polys that were identified as dups because
     # they fell outside the footprint, earlier in the staging step
-    known_dups = gdf[gdf[prop_duplicated] == True]
+    known_dups = gdf[gdf[prop_duplicated]]
     logger.info(f"Length of known_dups is {len(known_dups)}.")
 
     # Will hold the polygons that defined the footprint intersections
@@ -641,16 +634,10 @@ def deduplicate_by_footprint(
     # not currently available since removing dict step during cliping to FP
 
     if prop_duplicated in to_return.columns:
-        if True in to_return[prop_duplicated].values:
-            sum_true = (to_return[prop_duplicated] == True).value_counts()[True]
-            logger.info(
-                f"Sum of True values in the {prop_duplicated}" f" col is: {sum_true}"
-            )
-        else:
-            sum_true = 0
-            logger.info(
-                f"Sum of True values in the {prop_duplicated}" f"col is: {sum_true}"
-            )
+        sum_true = to_return[prop_duplicated].astype(bool).sum()
+        logger.info(
+            f"Sum of True values in the {prop_duplicated} col is: {sum_true}"
+        )
     else:
         logger.info(f"{prop_duplicated} is not a column present after labeling.")
 
