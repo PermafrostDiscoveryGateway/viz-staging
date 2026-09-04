@@ -3,14 +3,11 @@
 import argparse
 import logging
 from pathlib import Path
-from typing import Optional, Union, Set, List
+from typing import Optional, Union, List
 
 import geopandas as gpd
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
-from shapely.validation import make_valid
-from shapely.errors import GEOSException
-from shapely.ops import transform
 import h3
 import pandas as pd
 import numpy as np
@@ -203,14 +200,14 @@ class H3GridSummaryGenerator:
 
         # filter out polygons duplicated across tiles from staging step
         if 'staging_centroid_within_tile' in gdf.columns:
-            gdf = gdf[gdf['staging_centroid_within_tile'] == True]
+            gdf = gdf[gdf["staging_centroid_within_tile"].astype(bool)]
         if gdf.empty:
             self.logger.info("All features filtered out (centroids in other tiles). Skipping file.")
             return
 
         # filter out duplicate polygons across tiles from staging step
         if 'staging_duplicated' in gdf.columns:
-            gdf = gdf[gdf['staging_duplicated'] == True]
+            gdf = gdf[gdf["staging_duplicated"].astype(bool)]
         if gdf.empty:
             self.logger.info("All features filtered out (duplicated features). Skipping file.")
             return
@@ -222,7 +219,6 @@ class H3GridSummaryGenerator:
             gdf["area_km2"] = 0.0
 
         for row in gdf.itertuples(index=True):
-            idx = row.Index
             geom = row.geometry
             if geom is None or geom.is_empty:
                 continue
