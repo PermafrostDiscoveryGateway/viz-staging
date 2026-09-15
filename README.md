@@ -166,6 +166,18 @@ Build and test using standard Python tools.
 - To format code, run `black .`
 - VS Code configuration is setup to configure tests as well
 
+### Staging helpers
+
+Stage one source into tile shards, then merge an explicit shard list
+into one tile. Both functions write through a temporary sibling file,
+validate it, and atomically rename it into place.
+
+```python
+from pdgstaging import merge_staged_tile, stage_source
+shards = stage_source(input_path, shard_root, source_key, tms_id=..., z=..., path_structure=..., properties=...)
+merged = merge_staged_tile(shards, output_path)
+```
+
 ## License
 
 ```
