@@ -39,11 +39,11 @@ class TileStager:
     def __init__(
         self,
         tiles: Optional[TilePathManager] = None,
-        props=[],
+        props=None,
         max_z_level=13,
         tms_id="WGS1984Quad",
-        path_structure=["style", "tms", "z", "x", "y"],
-        base_dirs={},
+        path_structure=None,
+        base_dirs=None,
     ):
         """
         Initialize the TileStager object.
@@ -72,13 +72,13 @@ class TileStager:
 
         # Configured names of properties that will be added to each polygon
         # during either staging or rasterization
-        self.props = props
+        self.props = {} if props is None else props
 
         # Create tiles for the maximum z-level configured
         self.z_level = max_z_level
 
         if tiles is None:
-            self.tiles = self.set_tiling_config(tms_id, path_structure, base_dirs)
+            self.set_tiling_config(tms_id, path_structure, base_dirs)
         else:
             self.tiles = tiles
 
@@ -1000,8 +1000,8 @@ class TileStager:
     def set_tiling_config(
         self,
         tms_id="WGS1984Quad",
-        path_structure=["style", "tms", "z", "x", "y"],
-        base_dirs={},
+        path_structure=None,
+        base_dirs=None,
     ):
         """
         Updates the tiling config for the TilePathmanager class
@@ -1022,10 +1022,14 @@ class TileStager:
         None
         """
         self.tms_id = tms_id
-        self.path_structure = path_structure
+        self.path_structure = (
+            ["style", "tms", "z", "x", "y"]
+            if path_structure is None
+            else path_structure
+        )
+        base_dirs = {} if base_dirs is None else base_dirs
 
-        if not base_dirs:
-            self.base_dirs = self.get_default_base_dir()
+        self.base_dirs = self.get_default_base_dir()
 
         for key, value in base_dirs.items():
             if key in self.base_dirs:
