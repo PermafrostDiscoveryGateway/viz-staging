@@ -417,11 +417,24 @@ class H3GridSummaryGenerator:
 
             final_grouped = combined_df.groupby("h3_index", as_index=False).agg(agg_dict)
 
+            # finalize means
             for col in attr_to_mean:
                 final_grouped[f"mean_{col}"] = final_grouped[f"mean_{col}"] / final_grouped["_count"]
             
+            # generate geometries for h3 cells
             final_grouped["geometry"] = final_grouped["h3_index"].apply(self.h3_to_polygon)
             out_gdf = gpd.GeoDataFrame(final_grouped, geometry="geometry", crs="EPSG:4326")
+
+            # calculate % cover
+            if "area_km2" in out_gdf.columns and area_epsg is not None:
+                # calculate cell area using the same projection as the features
+                cell_area_km2 = out_gdf.to_crs(epsg=area_epsg).geometry.area / 1e6
+                
+                # calculate cover fraction
+                out_gdf["percent_cover"] = (out_gdf["area_km2"] / cell_area_km2) * 100
+                
+                # Clip to 100 to handle microscopic floating-point projection artifacts
+                #out_gdf["percent_cover"] = out_gdf["percent_cover"].clip(upper=100)
 
             if land_polygons_path is not None:
                 out_gdf = self.add_land_metrics(out_gdf, land_polygons_path, area_epsg=area_epsg)
