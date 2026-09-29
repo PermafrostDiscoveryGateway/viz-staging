@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 import pandas as pd
 import geopandas as gpd
+import pyproj
 import h3
 from shapely.geometry import Polygon
 from pdgstaging import H3GridSummaryGenerator 
@@ -281,3 +282,56 @@ def test_h3_mean_aggregation(
         assert row["mean_temperature"] == pytest.approx(row["expected_mean_temp"]), (
             f"Cell {row['h3_index']} expected mean temp {row['expected_mean_temp']}, got {row['mean_temperature']} "
         )
+
+@pytest.mark.parametrize("feature_split", [True, False])
+def test_h3_area_preservation(
+    tmp_path: Path, 
+    sample_staging_data: list, 
+    h3_stager, 
+    feature_split: bool
+):
+    """
+    Tests that the total area of the original polygons is globally conserved in the final
+    H3 summaries, whether the polygons are physically split across cells or assigned whole.
+    """
+    h3_res_list = [6]
+    out_paths = {6: tmp_path / f"final_h3_res3_split_{feature_split}.gpkg"}
+    
+    # Use the stager's default equal-area projection, or fallback to EPSG:3338 (Alaska Albers)
+    area_epsg = h3_stager.area_epsg if hasattr(h3_stager, 'area_epsg') and h3_stager.area_epsg else 3338
+    
+    expected_total_area_km2 = 0.0
+
+    # Process files and calculate the "ground truth" total area from raw inputs
+    for file_path in sample_staging_data:
+        raw_gdf = gpd.read_file(file_path)
+        
+        # Calculate raw area using Geopandas exactly as the stager does
+        expected_total_area_km2 += raw_gdf.to_crs(epsg=area_epsg).geometry.area.sum() / 1e6
+        
+        h3_stager.build_h3_summary(
+            input_path=file_path, 
+            output_paths=out_paths, 
+            h3_res=h3_res_list,
+            feature_split=feature_split,
+            area_epsg=area_epsg
+        )
+
+    # Combine the chunks
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths, 
+        h3_res=h3_res_list
+    )
+
+    # Read the final output and sum the H3 area column
+    final_file = out_paths[6]
+    assert final_file.exists(), "Final GeoPackage was not created."
+
+    final_gdf = gpd.read_file(final_file)
+    actual_total_area_km2 = final_gdf["area_km2"].sum()
+    
+    # Compare with a small tolerance for spatial intersection math discrepancies
+    assert actual_total_area_km2 == pytest.approx(expected_total_area_km2, rel=1e-4), (
+        f"Area conservation failed for feature_split={feature_split}. "
+        f"Expected {expected_total_area_km2:.4f} km2, got {actual_total_area_km2:.4f} km2"
+    )

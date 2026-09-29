@@ -8,6 +8,8 @@ from typing import Optional, Union, List
 import geopandas as gpd
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
+from shapely import transform
+import pyproj
 import h3
 import pandas as pd
 import numpy as np
@@ -70,7 +72,32 @@ class H3GridSummaryGenerator:
             return h3.latlng_to_cell(centroid.y, centroid.x, res)
         # else, get all cells associated with it
         else:
-            cells = set(h3.geo_to_cells(geom, res))
+            try:
+                # convert Shapely (x, y) to H3Shape (lat, lng) for experimental fn
+                if geom.geom_type == 'Polygon':
+                    outer = [(y, x) for x, y in geom.exterior.coords]
+                    holes = [[(y, x) for x, y in interior.coords] for interior in geom.interiors]
+                    h3_geom = h3.LatLngPoly(outer, *holes)
+                    
+                elif geom.geom_type == 'MultiPolygon':
+                    h3_polys = []
+                    for p in geom.geoms:
+                        outer = [(y, x) for x, y in p.exterior.coords]
+                        holes = [[(y, x) for x, y in interior.coords] for interior in p.interiors]
+                        h3_polys.append(h3.LatLngPoly(outer, *holes))
+                    h3_geom = h3.LatLngMultiPoly(*h3_polys)
+                    
+                else:
+                    h3_geom = geom  # fallback for unexpected types
+
+                # catch all overlapping cells using the native H3 shape
+                # this ensures we get all H3 cells that touch the polygon, not just ones that touch the 
+                # center of the H3 cell
+                cells = set(h3.h3shape_to_cells_experimental(h3_geom, res, contain='overlap'))
+                
+            except (AttributeError, ValueError) as e:
+                # fallback to standard fill if experimental fails or isn't supported
+                cells = set(h3.geo_to_cells(geom, res))
             if not cells:
                 cells = {h3.latlng_to_cell(centroid.y, centroid.x, res)}
             return cells
@@ -268,7 +295,7 @@ class H3GridSummaryGenerator:
                         # reproject the sliver to get it's true area
                         # have to do this because intersection is done on the non-equal area
                         # projections
-                        intersection_proj = transform(project_to_area, intersection)
+                        intersection_proj = transform(intersection, project_to_area, interleaved=False)
                         piece_area = intersection_proj.area / 1e6
                         
                         # calculate what percentage of the original feature this sliver represents
