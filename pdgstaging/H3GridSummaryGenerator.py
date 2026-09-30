@@ -3,7 +3,7 @@
 import argparse
 import logging
 from pathlib import Path
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Any
 
 import geopandas as gpd
 from shapely.geometry import Polygon
@@ -187,6 +187,140 @@ class H3GridSummaryGenerator:
 
         return h3_ea.to_crs(h3_gdf.crs)
 
+    def _prep_staging_gdf(
+        self, input_path: Path, area_epsg: int
+    ) -> tuple[Optional[gpd.GeoDataFrame], bool]:
+        """Loads staging file, validates CRS, applies tile filters, and computes feature areas."""
+        gdf = gpd.read_file(input_path)
+
+        if gdf.crs is None:
+            raise ValueError("Input dataset has no CRS; please define or reproject to EPSG:4326.")
+        if gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+
+        for col in ["staging_centroid_within_tile", "staging_duplicated"]:
+            if col in gdf.columns:
+                gdf = gdf[gdf[col].astype(bool)]
+                if gdf.empty:
+                    self.logger.info("All features filtered out (%s). Skipping file.", col)
+                    return None, False
+
+        has_polygons = any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique())
+        if has_polygons:
+            gdf["area_km2"] = gdf.to_crs(epsg=area_epsg).geometry.area / 1e6
+        else:
+            gdf["area_km2"] = 0.0
+
+        return gdf, has_polygons
+
+    def _process_feature_for_res(
+        self,
+        row: Any,
+        res: int,
+        feature_split: bool,
+        has_polygons: bool,
+        project_to_area: Optional[Any],
+        attr_to_sum: List[str],
+        attr_to_mean: List[str],
+    ) -> List[dict]:
+        """Generates H3 cell records for a single feature row at a given resolution."""
+        geom = row.geometry
+        h3_indices = self.feature_to_h3_index(geom, res, feature_split)
+        if not h3_indices:
+            return []
+
+        if isinstance(h3_indices, str):
+            h3_indices = {h3_indices}
+
+        needs_split = (
+            feature_split 
+            and has_polygons 
+            and geom.geom_type not in ("Point", "MultiPoint") 
+            and len(h3_indices) > 1
+        )
+
+        # Determine cell for assigning whole feature count
+        if needs_split:
+            centroid = geom.centroid
+            centroid_cell = h3.latlng_to_cell(centroid.y, centroid.x, res)
+            count_cell = centroid_cell if centroid_cell in h3_indices else next(iter(h3_indices))
+        else:
+            count_cell = next(iter(h3_indices))
+
+        records = []
+        for h3_cell in h3_indices:
+            piece_area = row.area_km2 if has_polygons else 0.0
+            ratio = 1.0
+
+            if needs_split:
+                cell_boundary = h3.cell_to_boundary(h3_cell)
+                h3_poly = Polygon([(lng, lat) for lat, lng in cell_boundary])
+
+                try:
+                    intersection = geom.intersection(h3_poly)
+                except Exception as e:
+                    self.logger.warning(f"Intersection geometry error: {e}")
+                    continue
+
+                if intersection.is_empty:
+                    continue
+
+                intersection_proj = transform(intersection, project_to_area, interleaved=False)
+                piece_area = intersection_proj.area / 1e6
+                ratio = piece_area / row.area_km2 if row.area_km2 > 0 else 0.0
+
+            rec = {
+                "h3_index": h3_cell,
+                "_count": 1 if h3_cell == count_cell else 0,
+            }
+
+            for col in attr_to_sum:
+                val = getattr(row, col)
+                rec[f"sum_{col}"] = val * ratio if feature_split else val
+
+            for col in attr_to_mean:
+                rec[f"mean_{col}"] = getattr(row, col)
+
+            if has_polygons:
+                rec["area_km2"] = piece_area
+
+            records.append(rec)
+
+        return records
+
+    def _write_resolution_chunk(
+        self,
+        records: List[dict],
+        res: int,
+        input_path: Path,
+        output_path: Path,
+        attr_to_sum: List[str],
+        attr_to_mean: List[str],
+    ) -> None:
+        """Aggregates feature records for a single resolution and writes to a parquet chunk."""
+        if not records:
+            self.logger.warning("No H3 coverage generated for resolution %s. Skipping.", res)
+            return
+
+        df = pd.DataFrame(records)
+
+        agg_dict = {"_count": "sum"}
+        for col in attr_to_sum:
+            agg_dict[f"sum_{col}"] = "sum"
+        for col in attr_to_mean:
+            agg_dict[f"mean_{col}"] = "sum"
+        if "area_km2" in df.columns:
+            agg_dict["area_km2"] = "sum"
+
+        grouped = df.groupby("h3_index", as_index=False).agg(agg_dict)
+
+        chunk_dir = output_path.parent / "chunks"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
+        tile_id = f"{input_path.parent.parent.name}_{input_path.parent.name}_{input_path.stem}"
+        chunk_filename = f"res_{res}_chunk_{tile_id}.parquet"
+        grouped.to_parquet(chunk_dir / chunk_filename)
+
     def build_h3_summary(
         self,
         input_path: Union[str, Path],
@@ -198,42 +332,18 @@ class H3GridSummaryGenerator:
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
     ) -> None:
-        if area_epsg is None:
-            area_epsg = self.area_epsg
-        if attr_to_sum is None:
-            attr_to_sum = self.attr_to_sum
-        if attr_to_mean is None:
-            attr_to_mean = self.attr_to_mean
-
+        """Orchestrates input staging, feature splitting, and intermediate chunk writing."""
+        area_epsg = area_epsg or self.area_epsg
+        attr_to_sum = attr_to_sum if attr_to_sum is not None else self.attr_to_sum
+        attr_to_mean = attr_to_mean if attr_to_mean is not None else self.attr_to_mean
         input_path = Path(input_path)
-        gdf = gpd.read_file(input_path)
 
-        if gdf.crs is None:
-            raise ValueError("Input dataset has no CRS; please define or reproject to EPSG:4326.")
-        if gdf.crs.to_epsg() != 4326:
-            gdf = gdf.to_crs(epsg=4326)
-
-        records_by_res = {res: [] for res in h3_res}
-
-        if 'staging_centroid_within_tile' in gdf.columns:
-            gdf = gdf[gdf["staging_centroid_within_tile"].astype(bool)]
-        if gdf.empty:
-            self.logger.info("All features filtered out (centroids in other tiles). Skipping file.")
+        # ingest, reproject, filter, and calculate base areas
+        gdf, has_polygons = self._prep_staging_gdf(input_path, area_epsg)
+        if gdf is None or gdf.empty:
             return
 
-        if 'staging_duplicated' in gdf.columns:
-            gdf = gdf[gdf["staging_duplicated"].astype(bool)]
-        if gdf.empty:
-            self.logger.info("All features filtered out (duplicated features). Skipping file.")
-            return
-
-        has_polygons = any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique())
-        if has_polygons:
-            gdf["area_km2"] = gdf.to_crs(epsg=area_epsg).geometry.area / 1e6
-        else:
-            gdf["area_km2"] = 0.0
-
-        # Pre-compile the reprojection transformer for fast sliver area calculations
+        # pre-compile projection transformer for feature splitting
         project_to_area = None
         if feature_split and has_polygons:
             project_to_area = pyproj.Transformer.from_crs(
@@ -242,112 +352,36 @@ class H3GridSummaryGenerator:
                 always_xy=True
             ).transform
 
+        # process features across resolutions
+        records_by_res = {res: [] for res in h3_res}
         for row in gdf.itertuples(index=True):
-            geom = row.geometry
-            if geom is None or geom.is_empty:
+            if row.geometry is None or row.geometry.is_empty:
                 continue
 
             for res in h3_res:
-                h3_indices = self.feature_to_h3_index(geom, res, feature_split)
-                if not h3_indices:
-                    continue
-                
-                # Normalize to an iterable so we can handle both single strings and sets cleanly
-                if isinstance(h3_indices, str):
-                    h3_indices = {h3_indices}
-                
-                needs_split = (
-                    feature_split 
-                    and has_polygons 
-                    and geom.geom_type not in ("Point", "MultiPoint") 
-                    and len(h3_indices) > 1
+                records = self._process_feature_for_res(
+                    row=row,
+                    res=res,
+                    feature_split=feature_split,
+                    has_polygons=has_polygons,
+                    project_to_area=project_to_area,
+                    attr_to_sum=attr_to_sum,
+                    attr_to_mean=attr_to_mean,
                 )
-                count_cell = None
-                # get the cell to assign the feature count to
-                if needs_split:
-                    centroid = geom.centroid
-                    centroid_cell = h3.latlng_to_cell(centroid.y, centroid.x, res)
-                    if centroid_cell in h3_indices:
-                        count_cell = centroid_cell
-                    else:
-                        count_cell = next(iter(h3_indices))
-                else:
-                    count_cell = next(iter(h3_indices))
+                records_by_res[res].extend(records)
 
-                for h3_cell in h3_indices:
-                    piece_area = row.area_km2 if has_polygons else 0.0
-                    ratio = 1.0
-
-                    # do the splitting if required
-                    if needs_split:
-                        cell_boundary = h3.cell_to_boundary(h3_cell)
-                        h3_poly = Polygon([(lng, lat) for lat, lng in cell_boundary])
-                        
-                        try:
-                            intersection = geom.intersection(h3_poly)
-                        except Exception as e:
-                            self.logger.warning(f"Intersection geometry error: {e}")
-                            continue
-                            
-                        if intersection.is_empty:
-                            continue
-                            
-                        # reproject the sliver to get it's true area
-                        # have to do this because intersection is done on the non-equal area
-                        # projections
-                        intersection_proj = transform(intersection, project_to_area, interleaved=False)
-                        piece_area = intersection_proj.area / 1e6
-                        
-                        # calculate what percentage of the original feature this sliver represents
-                        if row.area_km2 > 0:
-                            ratio = piece_area / row.area_km2
-                        else:
-                            ratio = 0.0
-
-                    
-                    count_val = 1 if h3_cell == count_cell else 0
-                    rec = {"h3_index": h3_cell, "_count": count_val}
-
-                    for col in attr_to_sum:
-                        val = getattr(row, col)
-                        # Prorate extensive variables (like population or crop yield) based on area split
-                        rec[f"sum_{col}"] = val * ratio if feature_split else val
-                        
-                    for col in attr_to_mean:
-                        # Intensive variables (like temperature) do not scale with area
-                        rec[f"mean_{col}"] = getattr(row, col)
-
-                    if has_polygons:
-                        rec["area_km2"] = piece_area
-
-                    records_by_res[res].append(rec)
-
+        # group and write output chunks for each resolution
         for res, records in records_by_res.items():
-            if not records:
-                self.logger.warning("No H3 coverage generated for resolution %s. Skipping.", res)
-                continue
+            self._write_resolution_chunk(
+                records=records,
+                res=res,
+                input_path=input_path,
+                output_path=Path(output_paths[res]),
+                attr_to_sum=attr_to_sum,
+                attr_to_mean=attr_to_mean,
+            )
 
-            df = pd.DataFrame(records)
 
-            agg_dict = {"_count": "sum"}
-            for col in attr_to_sum:
-                agg_dict[f"sum_{col}"] = "sum"
-            for col in attr_to_mean:
-                agg_dict[f"mean_{col}"] = "sum"
-            if "area_km2" in df.columns:
-                agg_dict["area_km2"] = "sum"
-
-            grouped = df.groupby("h3_index", as_index=False).agg(agg_dict)
-
-            output_path = Path(output_paths[res])
-            chunk_dir = output_path.parent / "chunks"
-            chunk_dir.mkdir(parents=True, exist_ok=True)
-
-            tile_id = f"{input_path.parent.parent.name}_{input_path.parent.name}_{input_path.stem}"
-            chunk_filename = f"res_{res}_chunk_{tile_id}.parquet"
-            chunk_path = chunk_dir / chunk_filename
-            
-            grouped.to_parquet(chunk_path)
 
     def combine_h3_summaries(
         self,
