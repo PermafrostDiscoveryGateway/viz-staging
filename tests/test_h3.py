@@ -4,6 +4,7 @@ import pandas as pd
 import geopandas as gpd
 import pyproj
 import h3
+import math
 from shapely.geometry import Polygon
 from pdgstaging import H3GridSummaryGenerator 
 
@@ -15,8 +16,8 @@ def sample_staging_data(tmp_path: Path):
     in a temporary directory. Yields the list of file paths.
     """
     # File 1: 2 overlapping features
-    p1 = Polygon([(-150, 65), (-150, 66), (-149, 66), (-149, 65)])
-    p2 = Polygon([(-149.5, 65.5), (-149.5, 66.5), (-148.5, 66.5), (-148.5, 65.5)])
+    p1 = Polygon([(-150.0, 65.0), (-150.0, 66.0), (-149.0, 66.0), (-149.0, 65.0)])
+    p2 = Polygon([(-148.0, 65.0), (-148.0, 66.0), (-147.0, 66.0), (-147.0, 65.0)])
     
     df1 = pd.DataFrame({
         "rocks": [100, 200],  
@@ -28,8 +29,8 @@ def sample_staging_data(tmp_path: Path):
     gdf1.to_file(file1, driver="GPKG")
 
     # File 2: 2 more features right in the same area
-    p3 = Polygon([(-150.2, 65.2), (-150.2, 66.2), (-149.2, 66.2), (-149.2, 65.2)])
-    p4 = Polygon([(-149.8, 65.8), (-149.8, 66.8), (-148.8, 66.8), (-148.8, 65.8)])
+    p3 = Polygon([(-150.0, 67.0), (-150.0, 68.0), (-149.0, 68.0), (-149.0, 67.0)])
+    p4 = Polygon([(-148.0, 67.0), (-148.0, 68.0), (-147.0, 68.0), (-147.0, 67.0)])
     
     df2 = pd.DataFrame({
         "rocks": [300, 400],
@@ -334,4 +335,76 @@ def test_h3_area_preservation(
     assert actual_total_area_km2 == pytest.approx(expected_total_area_km2, rel=1e-4), (
         f"Area conservation failed for feature_split={feature_split}. "
         f"Expected {expected_total_area_km2:.4f} km2, got {actual_total_area_km2:.4f} km2"
+    )
+
+def test_h3_overlapping_polygons_union(tmp_path: Path, h3_stager):
+    """
+    Tests that overlapping polygons in input staging data are unioned into 
+    a single feature cluster, preventing double-counted area and counts while 
+    correctly aggregating sum and mean attributes.
+    """
+    # two overlapping polygon geometries
+    p1 = Polygon([(-150, 65), (-150, 67), (-148, 67), (-148, 65)])
+    p2 = Polygon([(-149, 65), (-149, 67), (-147, 67), (-147, 65)])
+
+    df = pd.DataFrame({
+        "rocks": [100, 200],             # Sum expected: 300
+        "temperature": [-10.0, -4.0],    # Mean expected: -7.0
+        "staging_centroid_within_tile": [True, True]
+    })
+    gdf = gpd.GeoDataFrame(df, geometry=[p1, p2], crs="EPSG:4326")
+    input_file = tmp_path / "staging_overlap.gpkg"
+    gdf.to_file(input_file, driver="GPKG")
+
+    h3_res_list = [3]
+    out_paths = {3: tmp_path / "final_h3_overlap_res3.gpkg"}
+    area_epsg = 3338
+
+    # calculate ground-truth area of the UNIONED shape
+    unioned_geom = p1.union(p2)
+    expected_area_km2 = (
+        gpd.GeoSeries([unioned_geom], crs="EPSG:4326")
+        .to_crs(epsg=area_epsg)
+        .area.iloc[0] / 1e6
+    )
+
+    h3_stager.build_h3_summary(
+        input_path=input_file,
+        output_paths=out_paths,
+        h3_res=h3_res_list,
+        feature_split=False,
+        area_epsg=area_epsg
+    )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list,
+        area_epsg=area_epsg
+    )
+
+    # read final combined GeoPackage
+    final_file = out_paths[3]
+    assert final_file.exists(), "Final GeoPackage was not created."
+
+    final_gdf = gpd.read_file(final_file)
+
+    # feature count must be 1 (merged into single contiguous feature)
+    total_count = final_gdf["_count"].sum()
+    assert total_count == 1, f"Expected total feature count of 1, got {total_count}"
+
+    # total area must equal unioned area (no double counting)
+    actual_area = final_gdf["area_km2"].sum()
+    assert math.isclose(actual_area, expected_area_km2, rel_tol=1e-4), (
+        f"Area double-counting detected! "
+        f"Expected union area {expected_area_km2:.2f} km2, got {actual_area:.2f} km2"
+    )
+
+    # sum attribute ('rocks') should equal 300
+    total_rocks = final_gdf["sum_rocks"].sum()
+    assert total_rocks == 300, f"Expected sum_rocks to be 300, got {total_rocks}"
+
+    # mean attribute ('temperature') should equal -7.0
+    mean_temp = final_gdf["mean_temperature"].iloc[0]
+    assert math.isclose(mean_temp, -7.0, rel_tol=1e-4), (
+        f"Expected mean_temperature to be -7.0, got {mean_temp}"
     )

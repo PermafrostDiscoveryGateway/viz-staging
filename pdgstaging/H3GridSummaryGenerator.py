@@ -188,8 +188,12 @@ class H3GridSummaryGenerator:
         return h3_ea.to_crs(h3_gdf.crs)
 
     def _prep_staging_gdf(
-        self, input_path: Path, area_epsg: int
-    ) -> tuple[Optional[gpd.GeoDataFrame], bool]:
+        self,
+        input_path: Path,
+        area_epsg: int,
+        attr_to_sum: list[str] | None = None,
+        attr_to_mean: list[str] | None = None,
+    ) -> tuple[gpd.GeoDataFrame | None, bool]:
         """Loads staging file, validates CRS, applies tile filters, and computes feature areas."""
         gdf = gpd.read_file(input_path)
 
@@ -204,6 +208,8 @@ class H3GridSummaryGenerator:
                 if gdf.empty:
                     self.logger.info("All features filtered out (%s). Skipping file.", col)
                     return None, False
+        
+        gdf = self._union_overlapping_features(gdf, attr_to_sum, attr_to_mean)
 
         has_polygons = any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique())
         if has_polygons:
@@ -212,6 +218,56 @@ class H3GridSummaryGenerator:
             gdf["area_km2"] = 0.0
 
         return gdf, has_polygons
+
+    def _union_overlapping_features(
+        self,
+        gdf: gpd.GeoDataFrame,
+        attr_to_sum: list[str],
+        attr_to_mean: list[str],
+    ) -> gpd.GeoDataFrame:
+        """Unions overlapping polygon geometries into contiguous shapes to avoid count 
+        and area double-counting, aggregating attributes accordingly.
+        """
+        if gdf.empty or len(gdf) <= 1:
+            return gdf
+
+        # merge all overlapping polygons into unified geometries
+        unified_geom = gdf.geometry.unary_union
+
+        # explode into individual contiguous polygon components
+        unioned_series = (
+            gpd.GeoSeries([unified_geom], crs=gdf.crs)
+            .explode(index_parts=False)
+            .reset_index(drop=True)
+        )
+        unioned_gdf = gpd.GeoDataFrame(
+            {"cluster_id": unioned_series.index}, geometry=unioned_series, crs=gdf.crs
+        )
+
+        # map original features to their unioned cluster component
+        joined = gpd.sjoin(gdf, unioned_gdf, how="inner", predicate="intersects")
+
+        attr_to_sum = attr_to_sum or []
+        attr_to_mean = attr_to_mean or []
+
+        # aggregate attributes for each cluster
+        agg_dict = {}
+        for col in attr_to_sum:
+            if col in joined.columns:
+                agg_dict[col] = "sum"
+        for col in attr_to_mean:
+            if col in joined.columns:
+                agg_dict[col] = "mean"
+
+        if agg_dict:
+            grouped_attrs = joined.groupby("cluster_id").agg(agg_dict).reset_index()
+            result_polys = unioned_gdf.merge(grouped_attrs, on="cluster_id").drop(
+                columns=["cluster_id"]
+            )
+        else:
+            result_polys = unioned_gdf.drop(columns=["cluster_id"])
+
+        return result_polys
 
     def _process_feature_for_res(
         self,
@@ -339,7 +395,12 @@ class H3GridSummaryGenerator:
         input_path = Path(input_path)
 
         # ingest, reproject, filter, and calculate base areas
-        gdf, has_polygons = self._prep_staging_gdf(input_path, area_epsg)
+        gdf, has_polygons = self._prep_staging_gdf(
+            input_path=input_path,
+            area_epsg=area_epsg,
+            attr_to_sum=attr_to_sum,
+            attr_to_mean=attr_to_mean,
+        )
         if gdf is None or gdf.empty:
             return
 
