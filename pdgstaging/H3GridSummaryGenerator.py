@@ -331,11 +331,12 @@ class H3GridSummaryGenerator:
             }
 
             for col in attr_to_sum:
-                val = getattr(row, col)
-                rec[f"sum_{col}"] = val * ratio if feature_split else val
+                val = getattr(row, col, 0.0)
+                rec[f"sum_{col}"] = val if h3_cell == count_cell else 0
 
             for col in attr_to_mean:
-                rec[f"mean_{col}"] = getattr(row, col)
+                val = getattr(row, col, 0.0)
+                rec[f"mean_{col}"] = val if h3_cell == count_cell else 0.0
 
             if has_polygons:
                 rec["area_km2"] = piece_area
