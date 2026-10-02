@@ -284,19 +284,19 @@ def test_h3_mean_aggregation(
             f"Cell {row['h3_index']} expected mean temp {row['expected_mean_temp']}, got {row['mean_temperature']} "
         )
 
-@pytest.mark.parametrize("feature_split", [True, False])
+@pytest.mark.parametrize("intersect_h3_cells", [True, False])
 def test_h3_area_preservation(
     tmp_path: Path, 
     sample_staging_data: list, 
     h3_stager, 
-    feature_split: bool
+    intersect_h3_cells: bool
 ):
     """
     Tests that the total area of the original polygons is globally conserved in the final
     H3 summaries, whether the polygons are physically split across cells or assigned whole.
     """
     h3_res_list = [6]
-    out_paths = {6: tmp_path / f"final_h3_res3_split_{feature_split}.gpkg"}
+    out_paths = {6: tmp_path / f"final_h3_res3_split_{intersect_h3_cells}.gpkg"}
     
     # Use the stager's default equal-area projection, or fallback to EPSG:3338 (Alaska Albers)
     area_epsg = h3_stager.area_epsg if hasattr(h3_stager, 'area_epsg') and h3_stager.area_epsg else 3338
@@ -314,7 +314,7 @@ def test_h3_area_preservation(
             input_path=file_path, 
             output_paths=out_paths, 
             h3_res=h3_res_list,
-            feature_split=feature_split,
+            intersect_h3_cells=intersect_h3_cells,
             area_epsg=area_epsg
         )
 
@@ -333,23 +333,24 @@ def test_h3_area_preservation(
     
     # Compare with a small tolerance for spatial intersection math discrepancies
     assert actual_total_area_km2 == pytest.approx(expected_total_area_km2, rel=1e-4), (
-        f"Area conservation failed for feature_split={feature_split}. "
+        f"Area conservation failed for intersect_h3_cells={intersect_h3_cells}. "
         f"Expected {expected_total_area_km2:.4f} km2, got {actual_total_area_km2:.4f} km2"
     )
 
-def test_h3_overlapping_polygons_union(tmp_path: Path, h3_stager):
+@pytest.mark.parametrize("dissolve_overlaps", [True, False])
+def test_h3_overlapping_polygons_union_toggle(tmp_path: Path, h3_stager, dissolve_overlaps):
     """
-    Tests that overlapping polygons in input staging data are unioned into 
-    a single feature cluster, preventing double-counted area and counts while 
-    correctly aggregating sum and mean attributes.
+    Tests the dissolve_overlaps toggle. When True, overlapping polygons are merged 
+    to prevent double-counting area and counts. When False, they are processed 
+    as independent overlapping features.
     """
-    # two overlapping polygon geometries
+    # create two overlapping polygon geometries
     p1 = Polygon([(-150, 65), (-150, 67), (-148, 67), (-148, 65)])
     p2 = Polygon([(-149, 65), (-149, 67), (-147, 67), (-147, 65)])
 
     df = pd.DataFrame({
-        "rocks": [100, 200],             # Sum expected: 300
-        "temperature": [-10.0, -4.0],    # Mean expected: -7.0
+        "rocks": [100, 200],             
+        "temperature": [-10.0, -4.0],    
         "staging_centroid_within_tile": [True, True]
     })
     gdf = gpd.GeoDataFrame(df, geometry=[p1, p2], crs="EPSG:4326")
@@ -360,19 +361,23 @@ def test_h3_overlapping_polygons_union(tmp_path: Path, h3_stager):
     out_paths = {3: tmp_path / "final_h3_overlap_res3.gpkg"}
     area_epsg = 3338
 
-    # calculate ground-truth area of the UNIONED shape
-    unioned_geom = p1.union(p2)
-    expected_area_km2 = (
-        gpd.GeoSeries([unioned_geom], crs="EPSG:4326")
-        .to_crs(epsg=area_epsg)
-        .area.iloc[0] / 1e6
-    )
+    # calculate ground-truth areas for both scenarios
+    area_series = gpd.GeoSeries([p1, p2, p1.union(p2)], crs="EPSG:4326").to_crs(epsg=area_epsg)
+    p1_area_km2 = area_series.iloc[0].area / 1e6
+    p2_area_km2 = area_series.iloc[1].area / 1e6
+    unioned_area_km2 = area_series.iloc[2].area / 1e6
 
+    # set expectations based on the toggle
+    expected_count = 1 if dissolve_overlaps else 2
+    expected_area_km2 = unioned_area_km2 if dissolve_overlaps else (p1_area_km2 + p2_area_km2)
+
+    # process through the staging generator
     h3_stager.build_h3_summary(
         input_path=input_file,
         output_paths=out_paths,
         h3_res=h3_res_list,
-        feature_split=False,
+        intersect_h3_cells=False,
+        dissolve_overlaps=dissolve_overlaps,
         area_epsg=area_epsg
     )
 
@@ -385,26 +390,26 @@ def test_h3_overlapping_polygons_union(tmp_path: Path, h3_stager):
     # read final combined GeoPackage
     final_file = out_paths[3]
     assert final_file.exists(), "Final GeoPackage was not created."
-
     final_gdf = gpd.read_file(final_file)
 
-    # feature count must be 1 (merged into single contiguous feature)
+    # feature count
     total_count = final_gdf["_count"].sum()
-    assert total_count == 1, f"Expected total feature count of 1, got {total_count}"
+    assert total_count == expected_count, f"Expected count {expected_count}, got {total_count}"
 
-    # total area must equal unioned area (no double counting)
+    # area conservation
     actual_area = final_gdf["area_km2"].sum()
     assert math.isclose(actual_area, expected_area_km2, rel_tol=1e-4), (
-        f"Area double-counting detected! "
-        f"Expected union area {expected_area_km2:.2f} km2, got {actual_area:.2f} km2"
+        f"Expected area {expected_area_km2:.2f} km2, got {actual_area:.2f} km2"
     )
 
-    # sum attribute ('rocks') should equal 300
+    # sum attribute ('rocks') should always equal 300 regardless of union
     total_rocks = final_gdf["sum_rocks"].sum()
     assert total_rocks == 300, f"Expected sum_rocks to be 300, got {total_rocks}"
 
-    # mean attribute ('temperature') should equal -7.0
-    mean_temp = final_gdf["mean_temperature"].iloc[0]
-    assert math.isclose(mean_temp, -7.0, rel_tol=1e-4), (
-        f"Expected mean_temperature to be -7.0, got {mean_temp}"
-    )
+    # mean attribute ('temperature') exact check for union=True
+    if dissolve_overlaps:
+        # When unioned, they become 1 feature so the cluster mean is exactly -7.0 in one cell
+        mean_temp = final_gdf["mean_temperature"].iloc[0]
+        assert math.isclose(mean_temp, -7.0, rel_tol=1e-4), (
+            f"Expected mean_temperature to be -7.0, got {mean_temp}"
+        )

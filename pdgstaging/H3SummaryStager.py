@@ -103,7 +103,8 @@ class H3SummaryStager:
     def stage_all(
         self,
         h3_res: List[int],
-        feature_split: bool = False,
+        intersect_h3_cells: bool = False,
+        dissolve_overlaps: bool = False,
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
@@ -163,7 +164,8 @@ class H3SummaryStager:
                 out_dict = self.stage(
                     path=p,
                     h3_res=h3_res,
-                    feature_split=feature_split,
+                    intersect_h3_cells=intersect_h3_cells,
+                    dissolve_overlaps=dissolve_overlaps,
                     attr_to_sum=attr_to_sum,
                     attr_to_mean=attr_to_mean,
                     land_polygons_path=land_polygons_path,
@@ -207,7 +209,8 @@ class H3SummaryStager:
         self,
         path: PathLike,
         h3_res: List[int],
-        feature_split: bool = False,
+        intersect_h3_cells: bool = False,
+        dissolve_overlaps: bool = False,
         attr_to_sum: Optional[List[str]] = None,
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
@@ -225,8 +228,11 @@ class H3SummaryStager:
             path (PathLike): File path to the input vector dataset to process.
             h3_res (List[int]): A list of H3 resolution levels to generate 
                 summaries for.
-            feature_split: Whether to split polygon features that overlap multiple H3
-                cells, such that area calculations are exact for each cell.
+            intersect_h3_cells: Whether to split polygon features that overlap multiple H3
+                cells, such that area calculations are exact for each cell. Default
+                False.
+            dissolve_overlaps: Whether to union overlapping polygons prior to calculating
+                H3 summary stats. Defualt False.
             attr_to_sum (Optional[List[str]], optional): List of column names to 
                 aggregate using summation. Defaults to None.
             attr_to_mean (Optional[List[str]], optional): List of column names to 
@@ -263,7 +269,8 @@ class H3SummaryStager:
                 output_paths=output_paths,
                 h3_res=h3_res,
                 land_polygons_path=land_polygons_path,
-                feature_split=feature_split,
+                dissolve_overlaps=dissolve_overlaps,
+                intersect_h3_cells=intersect_h3_cells,
                 area_epsg=area_epsg,
                 attr_to_sum=attr_to_sum,
                 attr_to_mean=attr_to_mean,

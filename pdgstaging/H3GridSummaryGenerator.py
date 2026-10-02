@@ -41,34 +41,34 @@ class H3GridSummaryGenerator:
         self.attr_to_sum = attr_to_sum or []
         self.attr_to_mean = attr_to_mean or []
 
-    def feature_to_h3_index(self, geom, res: int, feature_split: bool) -> Optional[Union[str, set[str]]]:
+    def feature_to_h3_index(self, geom, res: int, intersect_h3_cells: bool) -> Optional[Union[str, set[str]]]:
         """Routes a given geometry to H3 cells based on the split configuration.
         
         Points use their exact coordinates. For polygons and other geometries:
-        - If feature_split is False, routes to a single H3 cell based on the centroid.
-        - If feature_split is True, routes to all intersecting H3 cells.
+        - If intersect_h3_cells is False, routes to a single H3 cell based on the centroid.
+        - If intersect_h3_cells is True, routes to all intersecting H3 cells.
 
         Args:
             geom: The Shapely geometry object to process (e.g., Point, Polygon).
             res (int): The H3 resolution level to use for the cell index.
-            feature_split (bool): Whether to return a set of all intersecting cells 
+            intersect_h3_cells (bool): Whether to return a set of all intersecting cells 
                 or just a single cell based on the centroid.
 
         Returns:
-            Optional[Union[str, set[str]]]: A single H3 string if feature_split=False, 
-                a set of H3 strings if feature_split=True, or None if geometry is empty.
+            Optional[Union[str, set[str]]]: A single H3 string if intersect_h3_cells=False, 
+                a set of H3 strings if intersect_h3_cells=True, or None if geometry is empty.
         """
         if geom is None or geom.is_empty:
             return None
 
         if geom.geom_type == "Point":
             cell = h3.latlng_to_cell(geom.y, geom.x, res)
-            return {cell} if feature_split else cell
+            return {cell} if intersect_h3_cells else cell
 
         # for Polygons, MultiPolygons, and all other geometries:
         # if no feature split, calculate the centroid and assign the entire feature to that single cell
         centroid = geom.centroid
-        if not feature_split:
+        if not intersect_h3_cells:
             return h3.latlng_to_cell(centroid.y, centroid.x, res)
         # else, get all cells associated with it
         else:
@@ -191,6 +191,7 @@ class H3GridSummaryGenerator:
         self,
         input_path: Path,
         area_epsg: int,
+        dissolve_overlaps: bool = False,
         attr_to_sum: list[str] | None = None,
         attr_to_mean: list[str] | None = None,
     ) -> tuple[gpd.GeoDataFrame | None, bool]:
@@ -208,8 +209,8 @@ class H3GridSummaryGenerator:
                 if gdf.empty:
                     self.logger.info("All features filtered out (%s). Skipping file.", col)
                     return None, False
-        
-        gdf = self._union_overlapping_features(gdf, attr_to_sum, attr_to_mean)
+        if dissolve_overlaps:
+            gdf = self._union_overlapping_features(gdf, attr_to_sum, attr_to_mean)
 
         has_polygons = any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique())
         if has_polygons:
@@ -273,7 +274,7 @@ class H3GridSummaryGenerator:
         self,
         row: Any,
         res: int,
-        feature_split: bool,
+        intersect_h3_cells: bool,
         has_polygons: bool,
         project_to_area: Optional[Any],
         attr_to_sum: List[str],
@@ -281,7 +282,7 @@ class H3GridSummaryGenerator:
     ) -> List[dict]:
         """Generates H3 cell records for a single feature row at a given resolution."""
         geom = row.geometry
-        h3_indices = self.feature_to_h3_index(geom, res, feature_split)
+        h3_indices = self.feature_to_h3_index(geom, res, intersect_h3_cells)
         if not h3_indices:
             return []
 
@@ -289,7 +290,7 @@ class H3GridSummaryGenerator:
             h3_indices = {h3_indices}
 
         needs_split = (
-            feature_split 
+            intersect_h3_cells 
             and has_polygons 
             and geom.geom_type not in ("Point", "MultiPoint") 
             and len(h3_indices) > 1
@@ -383,7 +384,8 @@ class H3GridSummaryGenerator:
         input_path: Union[str, Path],
         output_paths: dict,
         h3_res: List[int],
-        feature_split: bool = False,
+        intersect_h3_cells: bool = False,
+        dissolve_overlaps: bool = False,
         land_polygons_path: Optional[Union[str, Path]] = None,
         area_epsg: Optional[int] = None,
         attr_to_sum: Optional[List[str]] = None,
@@ -399,6 +401,7 @@ class H3GridSummaryGenerator:
         gdf, has_polygons = self._prep_staging_gdf(
             input_path=input_path,
             area_epsg=area_epsg,
+            dissolve_overlaps=dissolve_overlaps,
             attr_to_sum=attr_to_sum,
             attr_to_mean=attr_to_mean,
         )
@@ -407,7 +410,7 @@ class H3GridSummaryGenerator:
 
         # pre-compile projection transformer for feature splitting
         project_to_area = None
-        if feature_split and has_polygons:
+        if intersect_h3_cells and has_polygons:
             project_to_area = pyproj.Transformer.from_crs(
                 pyproj.CRS("EPSG:4326"), 
                 pyproj.CRS(f"EPSG:{area_epsg}"), 
@@ -424,7 +427,7 @@ class H3GridSummaryGenerator:
                 records = self._process_feature_for_res(
                     row=row,
                     res=res,
-                    feature_split=feature_split,
+                    intersect_h3_cells=intersect_h3_cells,
                     has_polygons=has_polygons,
                     project_to_area=project_to_area,
                     attr_to_sum=attr_to_sum,
