@@ -1,0 +1,415 @@
+import pytest
+from pathlib import Path
+import pandas as pd
+import geopandas as gpd
+import pyproj
+import h3
+import math
+from shapely.geometry import Polygon
+from pdgstaging import H3GridSummaryGenerator 
+
+
+@pytest.fixture
+def sample_staging_data(tmp_path: Path):
+    """
+    Sets up test fixtures by creating two overlapping GeoPackages 
+    in a temporary directory. Yields the list of file paths.
+    """
+    # File 1: 2 overlapping features
+    p1 = Polygon([(-150.0, 65.0), (-150.0, 66.0), (-149.0, 66.0), (-149.0, 65.0)])
+    p2 = Polygon([(-148.0, 65.0), (-148.0, 66.0), (-147.0, 66.0), (-147.0, 65.0)])
+    
+    df1 = pd.DataFrame({
+        "rocks": [100, 200],  
+        "temperature": [-5.0, -4.0], 
+        "staging_centroid_within_tile": [True, True]
+    })
+    gdf1 = gpd.GeoDataFrame(df1, geometry=[p1, p2], crs="EPSG:4326")
+    file1 = tmp_path / "staging_part1.gpkg"
+    gdf1.to_file(file1, driver="GPKG")
+
+    # File 2: 2 more features right in the same area
+    p3 = Polygon([(-150.0, 67.0), (-150.0, 68.0), (-149.0, 68.0), (-149.0, 67.0)])
+    p4 = Polygon([(-148.0, 67.0), (-148.0, 68.0), (-147.0, 68.0), (-147.0, 67.0)])
+    
+    df2 = pd.DataFrame({
+        "rocks": [300, 400],
+        "temperature": [-6.0, -7.0],
+        "staging_centroid_within_tile": [True, True]
+    })
+    gdf2 = gpd.GeoDataFrame(df2, geometry=[p3, p4], crs="EPSG:4326")
+    file2 = tmp_path / "staging_part2.gpkg"
+    gdf2.to_file(file2, driver="GPKG")
+
+    return [file1, file2]
+
+
+@pytest.fixture
+def h3_stager():
+    """
+    Initializes and returns the H3 generator instance.
+    """
+    return H3GridSummaryGenerator(
+        config=None,
+        attr_to_sum=["rocks"],
+        attr_to_mean=["temperature"]
+    )
+
+
+def test_h3_feature_count_single_resolution(tmp_path: Path, sample_staging_data: list, h3_stager: H3GridSummaryGenerator):
+    """
+    Tests that the final aggregated H3 GeoPackage correctly accounts 
+    for all features across multiple input files for a single zoom level.
+    """
+    h3_res_list = [3]
+    out_paths = {3: tmp_path / "final_h3_res3.gpkg"}
+
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path, 
+            output_paths=out_paths, 
+            h3_res=h3_res_list
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths, 
+        h3_res=h3_res_list
+    )
+
+    final_file = out_paths[3]
+    assert final_file.exists(), "Final GeoPackage was not created by the combiner."
+
+    final_gdf = gpd.read_file(final_file)
+    
+    total_features_counted = final_gdf["_count"].sum()
+    
+    assert total_features_counted == 4, f"Expected exactly 4 total features counted, but got {total_features_counted}"
+
+def test_h3_feature_count_multi_resolution(tmp_path: Path, sample_staging_data: list, h3_stager: H3GridSummaryGenerator):
+    """
+    Tests that the final aggregated H3 GeoPackage correctly accounts 
+    for all features across multiple input files for multiple zoom levels.
+    """
+
+    h3_res_list = [3,4]
+    out_paths = {3: tmp_path / "final_h3_res3.gpkg",
+                 4: tmp_path / "final_h3_res4.gpkg"}
+
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path, 
+            output_paths=out_paths, 
+            h3_res=h3_res_list
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths, 
+        h3_res=h3_res_list
+    )
+
+    for res, final_file in out_paths.items():
+        assert final_file.exists(), f"Final GeoPackage for resolution {res} was not created."
+
+        final_gdf = gpd.read_file(final_file)
+        assert not final_gdf.empty, f"GeoDataFrame for resolution {res} is empty."
+
+        total_features_counted = final_gdf["_count"].sum()
+
+        assert total_features_counted == 4, (
+            f"Expected 4 total feature counts for resolution {res}, "
+            f"but got {total_features_counted}"
+        )
+
+def test_h3_area_calculation_multi_resolution(
+    tmp_path: Path, sample_staging_data: list, h3_stager: H3GridSummaryGenerator
+):
+    """
+    Tests that the total intersected area (area_km2) is calculated accurately
+    and conserved across multiple H3 resolutions using the fixture data.
+    """
+
+    expected_area_km2 = 0.0
+    
+    for file_path in sample_staging_data:
+        gdf = gpd.read_file(file_path)
+        gdf_ea = gdf.to_crs(epsg=6933)
+        expected_area_km2 += (gdf_ea.geometry.area / 1e6).sum()
+
+    h3_res_list = [3, 4]
+    out_paths = {
+        3: tmp_path / "final_h3_area_res3.gpkg",
+        4: tmp_path / "final_h3_area_res4.gpkg",
+    }
+
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path, 
+            output_paths=out_paths, 
+            h3_res=h3_res_list
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list
+    )
+
+    for res, final_file in out_paths.items():
+        assert final_file.exists(), f"Final GeoPackage for resolution {res} was not created."
+
+        final_gdf = gpd.read_file(final_file)
+        assert "area_km2" in final_gdf.columns, f"Res {res} output is missing 'area_km2' column."
+
+        total_calculated_area_km2 = final_gdf["area_km2"].sum()
+
+        assert total_calculated_area_km2 == pytest.approx(expected_area_km2, rel=1e-3), (
+            f"Resolution {res} calculated total area {total_calculated_area_km2} km², "
+            f"expected {expected_area_km2} km²"
+        )
+
+def test_h3_sum_aggregation(
+    tmp_path: Path, sample_staging_data: list, h3_stager
+):
+    """
+    Tests that mean attributes are aggregated correctly (avoiding mean-of-means) 
+    """
+    h3_res_list = [3]  # Test on one resolution for simplicity
+    out_paths = {
+        3: tmp_path / "final_h3_mean_res3.gpkg",
+    }
+
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path,
+            output_paths=out_paths,
+            h3_res=h3_res_list
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list
+    )
+    
+    all_dfs = []
+    for file_path in sample_staging_data:
+        df = gpd.read_file(file_path)
+        
+        # Calculate exactly which cell each polygon will fall into based on its centroid
+        df['centroid'] = df.geometry.centroid
+        df['h3_index'] = df.apply(
+            lambda row: h3.latlng_to_cell(row.centroid.y, row.centroid.x, 3), 
+            axis=1
+        )
+        all_dfs.append(df)
+        
+    raw_combined = pd.concat(all_dfs, ignore_index=True)
+    
+    expected_grouped = raw_combined.groupby('h3_index').agg(
+        expected_rock_count=('rocks', 'sum'),
+    ).reset_index()
+
+    final_file = out_paths[3]
+    assert final_file.exists(), "Final GeoPackage was not created."
+    
+    final_gdf = gpd.read_file(final_file)
+    
+    merged = final_gdf.merge(expected_grouped, on='h3_index', how='left')
+    
+    assert "sum_rocks" in merged.columns
+    assert "_count" in merged.columns
+    
+    for idx, row in merged.iterrows():
+        assert row["sum_rocks"] == pytest.approx(row["expected_rock_count"]), (
+            f"Cell {row['h3_index']} expected number rocks {row['expected_rock_count']}, got {row['sum_rocks']} "
+        )
+
+
+def test_h3_mean_aggregation(
+    tmp_path: Path, sample_staging_data: list, h3_stager
+):
+    """
+    Tests that mean attributes are aggregated correctly (avoiding mean-of-means) 
+    """
+    h3_res_list = [3]
+    out_paths = {
+        3: tmp_path / "final_h3_mean_res3.gpkg",
+    }
+
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path,
+            output_paths=out_paths,
+            h3_res=h3_res_list
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list
+    )
+    
+    all_dfs = []
+    for file_path in sample_staging_data:
+        df = gpd.read_file(file_path)
+        
+        # Calculate exactly which cell each polygon will fall into based on its centroid
+        df['centroid'] = df.geometry.centroid
+        df['h3_index'] = df.apply(
+            lambda row: h3.latlng_to_cell(row.centroid.y, row.centroid.x, 3), 
+            axis=1
+        )
+        all_dfs.append(df)
+        
+    raw_combined = pd.concat(all_dfs, ignore_index=True)
+    
+    # Group by the h3_index and calculate the true mean and sum
+    expected_grouped = raw_combined.groupby('h3_index').agg(
+        expected_count=('temperature', 'size'),
+        expected_mean_temp=('temperature', 'mean'),
+    ).reset_index()
+
+    final_file = out_paths[3]
+    assert final_file.exists(), "Final GeoPackage was not created."
+    
+    final_gdf = gpd.read_file(final_file)
+    
+    merged = final_gdf.merge(expected_grouped, on='h3_index', how='left')
+    
+    assert "mean_temperature" in merged.columns
+    assert "_count" in merged.columns
+    
+    for idx, row in merged.iterrows():
+        assert row["_count"] == row["expected_count"], (
+            f"Cell {row['h3_index']} expected count {row['expected_count']}, got {row['_count']}"
+        )
+        assert row["mean_temperature"] == pytest.approx(row["expected_mean_temp"]), (
+            f"Cell {row['h3_index']} expected mean temp {row['expected_mean_temp']}, got {row['mean_temperature']} "
+        )
+
+@pytest.mark.parametrize("intersect_h3_cells", [True, False])
+def test_h3_area_preservation(
+    tmp_path: Path, 
+    sample_staging_data: list, 
+    h3_stager, 
+    intersect_h3_cells: bool
+):
+    """
+    Tests that the total area of the original polygons is globally conserved in the final
+    H3 summaries, whether the polygons are physically split across cells or assigned whole.
+    """
+    h3_res_list = [6]
+    out_paths = {6: tmp_path / f"final_h3_res3_split_{intersect_h3_cells}.gpkg"}
+    
+    # Use the stager's default equal-area projection, or fallback to EPSG:3338 (Alaska Albers)
+    area_epsg = h3_stager.area_epsg if hasattr(h3_stager, 'area_epsg') and h3_stager.area_epsg else 3338
+    
+    expected_total_area_km2 = 0.0
+
+    # Process files and calculate the "ground truth" total area from raw inputs
+    for file_path in sample_staging_data:
+        raw_gdf = gpd.read_file(file_path)
+        
+        # Calculate raw area using Geopandas exactly as the stager does
+        expected_total_area_km2 += raw_gdf.to_crs(epsg=area_epsg).geometry.area.sum() / 1e6
+        
+        h3_stager.build_h3_summary(
+            input_path=file_path, 
+            output_paths=out_paths, 
+            h3_res=h3_res_list,
+            intersect_h3_cells=intersect_h3_cells,
+            area_epsg=area_epsg
+        )
+
+    # Combine the chunks
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths, 
+        h3_res=h3_res_list
+    )
+
+    # Read the final output and sum the H3 area column
+    final_file = out_paths[6]
+    assert final_file.exists(), "Final GeoPackage was not created."
+
+    final_gdf = gpd.read_file(final_file)
+    actual_total_area_km2 = final_gdf["area_km2"].sum()
+    
+    # Compare with a small tolerance for spatial intersection math discrepancies
+    assert actual_total_area_km2 == pytest.approx(expected_total_area_km2, rel=1e-4), (
+        f"Area conservation failed for intersect_h3_cells={intersect_h3_cells}. "
+        f"Expected {expected_total_area_km2:.4f} km2, got {actual_total_area_km2:.4f} km2"
+    )
+
+@pytest.mark.parametrize("dissolve_overlaps", [True, False])
+def test_h3_overlapping_polygons_union_toggle(tmp_path: Path, h3_stager, dissolve_overlaps):
+    """
+    Tests the dissolve_overlaps toggle. When True, overlapping polygons are merged 
+    to prevent double-counting area and counts. When False, they are processed 
+    as independent overlapping features.
+    """
+    # create two overlapping polygon geometries
+    p1 = Polygon([(-150, 65), (-150, 67), (-148, 67), (-148, 65)])
+    p2 = Polygon([(-149, 65), (-149, 67), (-147, 67), (-147, 65)])
+
+    df = pd.DataFrame({
+        "rocks": [100, 200],             
+        "temperature": [-10.0, -4.0],    
+        "staging_centroid_within_tile": [True, True]
+    })
+    gdf = gpd.GeoDataFrame(df, geometry=[p1, p2], crs="EPSG:4326")
+    input_file = tmp_path / "staging_overlap.gpkg"
+    gdf.to_file(input_file, driver="GPKG")
+
+    h3_res_list = [3]
+    out_paths = {3: tmp_path / "final_h3_overlap_res3.gpkg"}
+    area_epsg = 3338
+
+    # calculate ground-truth areas for both scenarios
+    area_series = gpd.GeoSeries([p1, p2, p1.union(p2)], crs="EPSG:4326").to_crs(epsg=area_epsg)
+    p1_area_km2 = area_series.iloc[0].area / 1e6
+    p2_area_km2 = area_series.iloc[1].area / 1e6
+    unioned_area_km2 = area_series.iloc[2].area / 1e6
+
+    # set expectations based on the toggle
+    expected_count = 1 if dissolve_overlaps else 2
+    expected_area_km2 = unioned_area_km2 if dissolve_overlaps else (p1_area_km2 + p2_area_km2)
+
+    # process through the staging generator
+    h3_stager.build_h3_summary(
+        input_path=input_file,
+        output_paths=out_paths,
+        h3_res=h3_res_list,
+        intersect_h3_cells=False,
+        dissolve_overlaps=dissolve_overlaps,
+        area_epsg=area_epsg
+    )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list,
+        area_epsg=area_epsg
+    )
+
+    # read final combined GeoPackage
+    final_file = out_paths[3]
+    assert final_file.exists(), "Final GeoPackage was not created."
+    final_gdf = gpd.read_file(final_file)
+
+    # feature count
+    total_count = final_gdf["_count"].sum()
+    assert total_count == expected_count, f"Expected count {expected_count}, got {total_count}"
+
+    # area conservation
+    actual_area = final_gdf["area_km2"].sum()
+    assert math.isclose(actual_area, expected_area_km2, rel_tol=1e-4), (
+        f"Expected area {expected_area_km2:.2f} km2, got {actual_area:.2f} km2"
+    )
+
+    # sum attribute ('rocks') should always equal 300 regardless of union
+    total_rocks = final_gdf["sum_rocks"].sum()
+    assert total_rocks == 300, f"Expected sum_rocks to be 300, got {total_rocks}"
+
+    # mean attribute ('temperature') exact check for union=True
+    if dissolve_overlaps:
+        # When unioned, they become 1 feature so the cluster mean is exactly -7.0 in one cell
+        mean_temp = final_gdf["mean_temperature"].iloc[0]
+        assert math.isclose(mean_temp, -7.0, rel_tol=1e-4), (
+            f"Expected mean_temperature to be -7.0, got {mean_temp}"
+        )

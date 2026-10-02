@@ -204,11 +204,11 @@ class TileStager:
         self.logger.info(f"clip_to_footprint is {clip_to_footprint}")
         # check if the config is set to label duplicates
         # if the config is set to do so, clip to footprint
-        if clip_to_footprint == True and dedup is not None:
+        if clip_to_footprint and dedup is not None:
             self.logger.info(f" Starting clipping_to_footprint() for file {path}.")
             # pull in footprint as a gdf called fp
             fp = self.get_data(fp_path)
-            self.logger.info(f" Checking CRSs of polygons and footprint.")
+            self.logger.info(" Checking CRSs of polygons and footprint.")
 
             data_crs = gdf.crs
             fp_crs = fp.crs
@@ -248,9 +248,9 @@ class TileStager:
             return gdf_with_labels
         else:
             self.logger.info(
-                f" Either clip_to_footprint was set to False, or config"
-                f" was not set to deduplicate at any step. Returning original GDF"
-                f" without clipping to footprint."
+                " Either clip_to_footprint was set to False, or config"
+                " was not set to deduplicate at any step. Returning original GDF"
+                " without clipping to footprint."
             )
             return gdf
 
@@ -338,7 +338,7 @@ class TileStager:
             )
         else:
             self.logger.info(
-                f"No CRS set in input data. Setting to input_crs specified in config."
+                "No CRS set in input data. Setting to input_crs specified in config."
             )
 
         if input_crs:
@@ -570,8 +570,8 @@ class TileStager:
                     # Then remove all the duplicated data if the config is
                     # set to remove duplicates during staging.
                     self.logger.info(
-                        f"Tile exists and dedup is set to occur at some step,"
-                        f" so executing `combine_and_deduplicate()`"
+                        "Tile exists and dedup is set to occur at some step,"
+                        " so executing `combine_and_deduplicate()`"
                     )
                     data = self.combine_and_deduplicate(data, tile_path)
 
@@ -591,8 +591,8 @@ class TileStager:
                     # If deduplicating by footprint:
                     # neither file has been clipped to footprint
                     self.logger.info(
-                        f"Tile exists but dedup is not set to occur, so"
-                        f" appending polygons."
+                        "Tile exists but dedup is not set to occur, so"
+                        " appending polygons."
                     )
 
                     # Append to existing tile
@@ -617,11 +617,11 @@ class TileStager:
                         # the prop_duplicated col has not been created yet,
                         # so create it and set all values to False
                         self.logger.info(
-                            f"Tile does not yet exist and config is set to deduplicate "
-                            f"at staging, so removing polygons that fell outside the footprint "
-                            f"if deduplicating by footpint, and removing overlapping polygons\n"
-                            f"if deduplicating by neighbor if column already existed.\n "
-                            f"Creating column with all false values it it did not exist."
+                            "Tile does not yet exist and config is set to deduplicate "
+                            "at staging, so removing polygons that fell outside the footprint "
+                            "if deduplicating by footpint, and removing overlapping polygons\n"
+                            "if deduplicating by neighbor if column already existed.\n "
+                            "Creating column with all false values it it did not exist."
                         )
                         self.logger.info(
                             f"Checking for presence of {prop_duplicated} column."
@@ -656,10 +656,10 @@ class TileStager:
                         # This will be overwritten if this file overlaps with others later,
                         # with combine_and_deduplicate().
                         self.logger.info(
-                            f"Tile does not yet exist and config is set to deduplicate at a step "
-                            f"after staging, so just saving the new tile."
-                            f"\nIf deduplicating by footprint: "
-                            f"Duplicates from `clip_gdf` were identified."
+                            "Tile does not yet exist and config is set to deduplicate at a step "
+                            "after staging, so just saving the new tile."
+                            "\nIf deduplicating by footprint: "
+                            "Duplicates from `clip_gdf` were identified."
                         )
 
                         self.logger.info(
@@ -692,9 +692,9 @@ class TileStager:
                     # No duplicates were labeled earlier either,
                     # because the workflow did not check if any fell outside the footprint.
                     self.logger.info(
-                        f"Tile does not yet exist and config is not set to deduplicate, so just "
-                        f"saving the new tile.\nIf deduplicating by footprint:\n"
-                        f"Duplicates from `clip_gdf` were not identified."
+                        "Tile does not yet exist and config is not set to deduplicate, so just "
+                        "saving the new tile.\nIf deduplicating by footprint:\n"
+                        "Duplicates from `clip_gdf` were not identified."
                     )
 
                     mode = "w"
@@ -902,9 +902,6 @@ class TileStager:
 
         if gdf is None:
             return None
-
-        # Log the summary event, including how long it takes
-        start_time = datetime.now()
 
         prop_file = self.props["filename"]
         prop_tile = self.props["tile"]
