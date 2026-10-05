@@ -95,7 +95,7 @@ class H3GridSummaryGenerator:
                 # center of the H3 cell
                 cells = set(h3.h3shape_to_cells_experimental(h3_geom, res, contain='overlap'))
                 
-            except (AttributeError, ValueError) as e:
+            except (AttributeError, ValueError):
                 # fallback to standard fill if experimental fails or isn't supported
                 cells = set(h3.geo_to_cells(geom, res))
             if not cells:
@@ -307,7 +307,6 @@ class H3GridSummaryGenerator:
         records = []
         for h3_cell in h3_indices:
             piece_area = row.area_km2 if has_polygons else 0.0
-            ratio = 1.0
 
             if needs_split:
                 cell_boundary = h3.cell_to_boundary(h3_cell)
@@ -324,7 +323,6 @@ class H3GridSummaryGenerator:
 
                 intersection_proj = transform(intersection, project_to_area, interleaved=False)
                 piece_area = intersection_proj.area / 1e6
-                ratio = piece_area / row.area_km2 if row.area_km2 > 0 else 0.0
 
             rec = {
                 "h3_index": h3_cell,
