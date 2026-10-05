@@ -2,7 +2,6 @@ import pytest
 from pathlib import Path
 import pandas as pd
 import geopandas as gpd
-import pyproj
 import h3
 import math
 from shapely.geometry import Polygon

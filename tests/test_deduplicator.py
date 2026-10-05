@@ -2,7 +2,6 @@ import geopandas as gpd
 from shapely.geometry import box
 
 from pdgstaging.Deduplicator import (
-    keep_rules_to_sort_order,
     clip_gdf,
     deduplicate_neighbors,
     label_duplicates,
