@@ -521,6 +521,9 @@ class H3GridSummaryGenerator:
             # generate geometries for h3 cells
             final_grouped["geometry"] = final_grouped["h3_index"].apply(self.h3_to_polygon)
             out_gdf = gpd.GeoDataFrame(final_grouped, geometry="geometry", crs="EPSG:4326")
+            
+            # rename the h3 index column to identifier for easier Cesium stuff
+            out_gdf.rename(columns={"h3_index": "identifier"})
 
             # calculate % cover
             if "area_km2" in out_gdf.columns and area_epsg is not None:
