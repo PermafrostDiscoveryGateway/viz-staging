@@ -2,20 +2,21 @@
 
 **Goal:** Convert feature geometries into H3 cell indices based on their center points, then aggregate total counts, raw areas, and custom feature attributes into a uniform hexagonal grid.
 
-1. For any input geometry file: compute an absolute `_count` per H3 cell (how many feature centroids fall within the cell).
+1. For any input geometry file: compute a `_count` per H3 cell (assigned by centroid or prorated by overlap fraction).
 2. For polygon features: compute the total `area_km2` and `percent_cover` assigned to the cell
-3. Aggregate custom attributes using true mathematical sums (`sum_*`) and means (`mean_*`).
+3. Aggregate custom attributes using true mathematical means (`mean_*`).
+4. Aggregate custom attributes using either centroid based sums or prorated sums based on H3 overlap fraction (`sum_*`).
 4. Optionally compute land-only statistics: `land_area_km2`, `land_fraction`, and `land_coverage_fraction` during final assembly.
 
 ### Summary Statistics Methodology
 
-The `H3GridSummaryGenerator` calculates summary statistics by examining each feature in a dataset, and assigning that feature to H3 in each resolution requested. For points, the point itself is used, otherwise the centroid of the feature is used to determine which cell should contain the summary metrics. `_count`, `sum_*`, and `mean_*` attributes are calculated by assigning each feature to one and only one H3 cell, using the centroid. The `h3_intersect_h3_cells` configuration option in `viz-workflow` allows for `area_km2` and `percent_cover` to be calculated the same way, with all of a features area being assigned to one or only one cell (`intersect_h3_cells` = `False`). If `intersect_h3_cells` is set to `True`, features will be split across H3 cells they overlap, and `area_km2`, `percent_cover` are calculated accurately by cell. Note that `intersect_h3_cells` has no effect on `_count`, `sum_*`, and `mean_*` attributes, as fractional counts in many cases would not be sensible, nor would aggregation of `mean_*` attributes make sense. In addition to this configuration option, users can also choose whether to union overlapping features with `dissolve_overlaps`. This is done as part of pre-processing. If set to `True`, attributes for overlapping shapes are aggregated during this step (sum for `attr_to_sum` columns, mean for `attr_to_mean` columns), preventing double-counting feature counts and surface areas.
+The `H3GridSummaryGenerator` calculates summary statistics by examining each feature in a dataset, and assigning that feature to H3 in each resolution requested. For points, the point itself is used, otherwise the centroid or spatial intersection of the feature is used to determine which cell should contain the summary metrics. By default, `_count`, `sum_*`, and `mean_*` attributes are calculated by assigning each feature to one and only one H3 cell, using the centroid. The `h3_intersect_cells` configuration option in `viz-workflow` allows for `area_km2` and `percent_cover` to be calculated the same way, with all of a feature's area being assigned to one or only one cell (`h3_intersect_cells` = `False`). If `h3_intersect_cells` is set to `True`, features will be split across H3 cells they overlap, and `area_km2`, `percent_cover` are calculated accurately by cell. When `h3_intersect_cells` is `True`, users can also configure specific `sum_*` attributes to be prorated (split across cells based on area ratio) rather than anchored to the centroid. If a feature is split this way, its `_count` is also prorated to conserve the global total. Note that spatial splitting has no effect on `mean_*` attributes. In addition to this configuration option, users can also choose whether to union overlapping features with `dissolve_overlaps`. This is done as part of pre-processing. If set to `True`, attributes for overlapping shapes are aggregated during this step (sum for `attr_to_sum` columns, mean for `attr_to_mean` columns), preventing double-counting feature counts and surface areas.
 
 ![](images/h3-polygons.png)
 
-The diagram above illustrates how metrics are distributed to H3 cells from overlapping and non-overlapping polygons at two H3 zoom levels for both `intersect_h3_cells` `True` and `False`, and for `dissolve_overlaps` `True` and `False`.
+The diagram above illustrates how metrics are distributed to H3 cells from overlapping and non-overlapping polygons at two H3 zoom levels for both `h3_intersect_cells` `True` and `False`, and for `dissolve_overlaps` `True` and `False`.
 
-#### intersect_h3_cells = False
+#### h3_intersect_cells = False
 
 This method assigns 100% of a feature's area, count, and attributes to the single H3 cell that contains its geometric centroid. It is best to use when the features are smaller than the H3 cells, or when downstream analysis depends on accurate counts or aggretating variables. In particular, any kind of area density calculation should be done on an unsplit dataset.
 
@@ -29,7 +30,7 @@ Cons:
     - Cover Fraction Inaccuracies: Dumping a massive polygon's area into a single cell could cause the cover_fraction to exceed 100.
     
 
-#### intersect_h3_cells = True
+#### h3_intersect_cells = True
 
 This method physically cuts polygon geometries along H3 boundaries, distributing the `area_km2` across all touched cells while anchoring the feature count and attributes strictly to the centroid cell. This algorithm should be considered if features are larger than cells or if the most critical output is exact percent cover or area.
 
@@ -47,15 +48,15 @@ This method is appropriate in most situations - polygons are left as distinct en
 
 #### dissolve_overlaps = True
 
-This method can be useful for certain datasets where the same feature is represented many times. For example, the DARTS dataset shows thaw slumps detected over a number of different years. The same slump often appears in the dataset 2-6 times, with slightly different boundaries. Using `dissolve_overlaps` = `True` in this case gives us the total area of land that has ever had a slump over the observation period. Note that if `dissolve_overlaps` = `True` and `intersect_h3_cells` = `False`, it may be more likely to get greater than 100% `percent_cover` values in cells if many polygons are chained together.
+This method can be useful for certain datasets where the same feature is represented many times. For example, the DARTS dataset shows thaw slumps detected over a number of different years. The same slump often appears in the dataset 2-6 times, with slightly different boundaries. Using `dissolve_overlaps` = `True` in this case gives us the total area of land that has ever had a slump over the observation period. Note that if `dissolve_overlaps` = `True` and `h3_intersect_cells` = `False`, it may be more likely to get greater than 100% `percent_cover` values in cells if many polygons are chained together.
 
 ### Inputs
 
 *   `input_path`: Path to an input vector dataset (.shp, .gpkg, .parquet).
 *   `output_paths`: Dictionary mapping H3 resolutions to their final output GeoPackage paths (e.g., `{3: "out_res3.gpkg", 4: "out_res4.gpkg"}`).
 *   `h3_res`: List of H3 resolutions to process simultaneously (e.g., `[3, 4]`).
-*   `intersect_h3_cells` (optional): Whether to split polygon features across H3 cells for area and cover calculations. Default False.
-*   `attr_to_sum` (optional): List of numeric column names to sum across features.
+*   `h3_intersect_cells` (optional): Whether to split polygon features across H3 cells for area and cover calculations. Default False.
+*   `attr_to_sum` (optional): List or dictionary of numeric column names to sum across features. If passed as a simple list, all attributes are assigned entirely to the feature's centroid cell. If passed as a dictionary, you can specify the spatial aggregation strategy: `{"split_across_cells": ["col1"], "anchor_to_centroid": ["col2"]}`.
 *   `attr_to_mean` (optional): List of numeric column names to average across features.
 *   `land_polygons_path` (optional): Land/coastline polygon dataset path (applied in the combination step).
 *   `area_epsg`: Equal-area EPSG code for accurate area computations (default `6933`).
@@ -82,8 +83,8 @@ This method processes individual files and stages them as lightweight Parquet ch
     * Store the total area by feature in a new `area_km2` column.
 
 3. **H3 Indexing and Feature Splitting**
-    * Without Splitting (`intersect_h3_cells=False`): Find the feature centroid and map it to a single H3 cell per resolution.
-    * With Splitting (`intersect_h3_cells=True`): Identify all H3 cells touched by the geometry using boundary overlapping. Intersect the polygon with each cell's boundary and reproject slivers to `area_epsg` to measure individual sliver areas.
+    * Without Splitting (`h3_intersect_cells=False`): Find the feature centroid and map it to a single H3 cell per resolution.
+    * With Splitting (`h3_intersect_cells=True`): Identify all H3 cells touched by the geometry using boundary overlapping. Intersect the polygon with each cell's boundary and reproject slivers to `area_epsg` to measure individual sliver areas.
     * Area & Ratio Normalization: Calculate sliver areas relative to the total sum of sliver areas to ensure 100% total area conservation.
     * Count Conservation: Assign _count = 1 only to the cell containing the feature's centroid; non-centroid split slivers receive _count = 0.
 
