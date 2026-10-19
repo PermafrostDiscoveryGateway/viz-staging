@@ -165,36 +165,39 @@ def test_h3_area_calculation_multi_resolution(
             f"expected {expected_area_km2} km²"
         )
 
-def test_h3_sum_aggregation(
+def test_h3_sum_aggregation_split_vs_anchor(
     tmp_path: Path, sample_staging_data: list, h3_stager
 ):
     """
-    Tests that mean attributes are aggregated correctly (avoiding mean-of-means) 
+    Tests the new dictionary attr_to_sum logic.
+    Verifies that anchored attributes match the centroid exactly, 
+    and split attributes are prorated while conserving the global total.
     """
-    h3_res_list = [3]  # Test on one resolution for simplicity
+    h3_res_list = [3]
     out_paths = {
-        3: tmp_path / "final_h3_mean_res3.gpkg",
+        3: tmp_path / "final_h3_sum_res3.gpkg",
     }
 
-    for file_path in sample_staging_data:
-        h3_stager.build_h3_summary(
-            input_path=file_path,
-            output_paths=out_paths,
-            h3_res=h3_res_list
-        )
+    # Define our new feature routing dict
+    # Assuming 'rocks' is in your fixture. We'll add 'fish' to the fixture 
+    # dynamically below if it doesn't exist to test the split logic.
+    test_attr_to_sum = {
+        "anchor_to_centroid": ["rocks"],
+        "split_across_cells": ["fish"]
+    }
 
-    h3_stager.combine_h3_summaries(
-        output_paths=out_paths,
-        h3_res=h3_res_list
-    )
-    
+    # prepare raw data & calculate expected values first
     all_dfs = []
     for file_path in sample_staging_data:
         df = gpd.read_file(file_path)
         
-        # Calculate exactly which cell each polygon will fall into based on its centroid
+        if 'fish' not in df.columns:
+            df['fish'] = 100.0  
+            # Save the modified fixture back out so the stager can read it
+            df.to_file(file_path, driver="GeoJSON")
+            
         df['centroid'] = df.geometry.centroid
-        df['h3_index'] = df.apply(
+        df['identifier'] = df.apply(
             lambda row: h3.latlng_to_cell(row.centroid.y, row.centroid.x, 3), 
             axis=1
         )
@@ -202,24 +205,55 @@ def test_h3_sum_aggregation(
         
     raw_combined = pd.concat(all_dfs, ignore_index=True)
     
-    expected_grouped = raw_combined.groupby('h3_index').agg(
+    # Expected Anchored: grouped strictly by centroid
+    expected_grouped = raw_combined.groupby('identifier').agg(
         expected_rock_count=('rocks', 'sum'),
     ).reset_index()
 
+    # Expected Split: global sum must be preserved
+    expected_global_fish = raw_combined['fish'].sum()
+
+    # run the H3 Generator
+    for file_path in sample_staging_data:
+        h3_stager.build_h3_summary(
+            input_path=file_path,
+            output_paths=out_paths,
+            h3_res=h3_res_list,
+            h3_intersect_cells=True,
+            attr_to_sum=test_attr_to_sum
+        )
+
+    h3_stager.combine_h3_summaries(
+        output_paths=out_paths,
+        h3_res=h3_res_list,
+        attr_to_sum=test_attr_to_sum
+    )
+    
     final_file = out_paths[3]
     assert final_file.exists(), "Final GeoPackage was not created."
     
     final_gdf = gpd.read_file(final_file)
     
-    merged = final_gdf.merge(expected_grouped, on='h3_index', how='left')
+    assert "sum_rocks" in final_gdf.columns
+    assert "sum_fish" in final_gdf.columns
+    assert "_count" in final_gdf.columns
     
-    assert "sum_rocks" in merged.columns
-    assert "_count" in merged.columns
+    # VERIFY ANCHORED (rocks)
+    merged = final_gdf.merge(expected_grouped, on='identifier', how='left')
+    merged['expected_rock_count'] = merged['expected_rock_count'].fillna(0)
     
     for idx, row in merged.iterrows():
         assert row["sum_rocks"] == pytest.approx(row["expected_rock_count"]), (
-            f"Cell {row['h3_index']} expected number rocks {row['expected_rock_count']}, got {row['sum_rocks']} "
+            f"Cell {row['identifier']} expected rocks {row['expected_rock_count']}, got {row['sum_rocks']} "
         )
+
+    # VERIFY SPLIT (fish)
+    actual_global_fish = final_gdf["sum_fish"].sum()
+    
+    assert actual_global_fish == pytest.approx(expected_global_fish, rel=1e-3), (
+        f"Global sum of prorated attribute 'fish' was not conserved! "
+        f"Expected {expected_global_fish}, got {actual_global_fish}."
+    )
 
 
 def test_h3_mean_aggregation(
@@ -251,7 +285,7 @@ def test_h3_mean_aggregation(
         
         # Calculate exactly which cell each polygon will fall into based on its centroid
         df['centroid'] = df.geometry.centroid
-        df['h3_index'] = df.apply(
+        df['identifier'] = df.apply(
             lambda row: h3.latlng_to_cell(row.centroid.y, row.centroid.x, 3), 
             axis=1
         )
@@ -259,8 +293,8 @@ def test_h3_mean_aggregation(
         
     raw_combined = pd.concat(all_dfs, ignore_index=True)
     
-    # Group by the h3_index and calculate the true mean and sum
-    expected_grouped = raw_combined.groupby('h3_index').agg(
+    # Group by the identifier and calculate the true mean and sum
+    expected_grouped = raw_combined.groupby('identifier').agg(
         expected_count=('temperature', 'size'),
         expected_mean_temp=('temperature', 'mean'),
     ).reset_index()
@@ -270,32 +304,32 @@ def test_h3_mean_aggregation(
     
     final_gdf = gpd.read_file(final_file)
     
-    merged = final_gdf.merge(expected_grouped, on='h3_index', how='left')
+    merged = final_gdf.merge(expected_grouped, on='identifier', how='left')
     
     assert "mean_temperature" in merged.columns
     assert "_count" in merged.columns
     
     for idx, row in merged.iterrows():
         assert row["_count"] == row["expected_count"], (
-            f"Cell {row['h3_index']} expected count {row['expected_count']}, got {row['_count']}"
+            f"Cell {row['identifier']} expected count {row['expected_count']}, got {row['_count']}"
         )
         assert row["mean_temperature"] == pytest.approx(row["expected_mean_temp"]), (
-            f"Cell {row['h3_index']} expected mean temp {row['expected_mean_temp']}, got {row['mean_temperature']} "
+            f"Cell {row['identifier']} expected mean temp {row['expected_mean_temp']}, got {row['mean_temperature']} "
         )
 
-@pytest.mark.parametrize("intersect_h3_cells", [True, False])
+@pytest.mark.parametrize("h3_intersect_cells", [True, False])
 def test_h3_area_preservation(
     tmp_path: Path, 
     sample_staging_data: list, 
     h3_stager, 
-    intersect_h3_cells: bool
+    h3_intersect_cells: bool
 ):
     """
     Tests that the total area of the original polygons is globally conserved in the final
     H3 summaries, whether the polygons are physically split across cells or assigned whole.
     """
     h3_res_list = [6]
-    out_paths = {6: tmp_path / f"final_h3_res3_split_{intersect_h3_cells}.gpkg"}
+    out_paths = {6: tmp_path / f"final_h3_res3_split_{h3_intersect_cells}.gpkg"}
     
     # Use the stager's default equal-area projection, or fallback to EPSG:3338 (Alaska Albers)
     area_epsg = h3_stager.area_epsg if hasattr(h3_stager, 'area_epsg') and h3_stager.area_epsg else 3338
@@ -313,7 +347,7 @@ def test_h3_area_preservation(
             input_path=file_path, 
             output_paths=out_paths, 
             h3_res=h3_res_list,
-            intersect_h3_cells=intersect_h3_cells,
+            h3_intersect_cells=h3_intersect_cells,
             area_epsg=area_epsg
         )
 
@@ -332,7 +366,7 @@ def test_h3_area_preservation(
     
     # Compare with a small tolerance for spatial intersection math discrepancies
     assert actual_total_area_km2 == pytest.approx(expected_total_area_km2, rel=1e-4), (
-        f"Area conservation failed for intersect_h3_cells={intersect_h3_cells}. "
+        f"Area conservation failed for h3_intersect_cells={h3_intersect_cells}. "
         f"Expected {expected_total_area_km2:.4f} km2, got {actual_total_area_km2:.4f} km2"
     )
 
@@ -375,7 +409,7 @@ def test_h3_overlapping_polygons_union_toggle(tmp_path: Path, h3_stager, dissolv
         input_path=input_file,
         output_paths=out_paths,
         h3_res=h3_res_list,
-        intersect_h3_cells=False,
+        h3_intersect_cells=False,
         dissolve_overlaps=dissolve_overlaps,
         area_epsg=area_epsg
     )

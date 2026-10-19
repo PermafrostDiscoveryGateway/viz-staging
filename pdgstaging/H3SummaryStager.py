@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 
 import pandas as pd
 import pyarrow as pa
@@ -103,9 +103,9 @@ class H3SummaryStager:
     def stage_all(
         self,
         h3_res: List[int],
-        intersect_h3_cells: bool = False,
+        h3_intersect_cells: bool = False,
         dissolve_overlaps: bool = False,
-        attr_to_sum: Optional[List[str]] = None,
+        attr_to_sum: Optional[Union[Dict[str, List[str]], List[str]]] = None,
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
@@ -119,8 +119,11 @@ class H3SummaryStager:
 
         Args:
             h3_res (List[int]): A list of H3 resolution levels to generate summaries for.
-            attr_to_sum (Optional[List[str]], optional): List of column names to aggregate 
-                using summation. Defaults to None.
+            h3_intersect_cells (bool): Whether to split polygon features spanning multiple H3 cells.
+            dissolve_overlaps (bool): Whether to union overlapping geometries before aggregation.
+            attr_to_sum (Optional[Union[Dict[str, List[str]], List[str]]], optional): 
+                List or dictionary mapping column names to sum aggregation strategies 
+                ('split_across_cells' or 'anchor_to_centroid'). Defaults to None.
             attr_to_mean (Optional[List[str]], optional): List of column names to aggregate 
                 using mean calculations. Defaults to None.
             land_polygons_path (Optional[PathLike], optional): File path to a vector 
@@ -164,7 +167,7 @@ class H3SummaryStager:
                 out_dict = self.stage(
                     path=p,
                     h3_res=h3_res,
-                    intersect_h3_cells=intersect_h3_cells,
+                    h3_intersect_cells=h3_intersect_cells,
                     dissolve_overlaps=dissolve_overlaps,
                     attr_to_sum=attr_to_sum,
                     attr_to_mean=attr_to_mean,
@@ -209,9 +212,9 @@ class H3SummaryStager:
         self,
         path: PathLike,
         h3_res: List[int],
-        intersect_h3_cells: bool = False,
+        h3_intersect_cells: bool = False,
         dissolve_overlaps: bool = False,
-        attr_to_sum: Optional[List[str]] = None,
+        attr_to_sum: Optional[Union[Dict[str, List[str]], List[str]]] = None,
         attr_to_mean: Optional[List[str]] = None,
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
@@ -228,13 +231,14 @@ class H3SummaryStager:
             path (PathLike): File path to the input vector dataset to process.
             h3_res (List[int]): A list of H3 resolution levels to generate 
                 summaries for.
-            intersect_h3_cells: Whether to split polygon features that overlap multiple H3
+            h3_intersect_cells: Whether to split polygon features that overlap multiple H3
                 cells, such that area calculations are exact for each cell. Default
                 False.
             dissolve_overlaps: Whether to union overlapping polygons prior to calculating
                 H3 summary stats. Defualt False.
-            attr_to_sum (Optional[List[str]], optional): List of column names to 
-                aggregate using summation. Defaults to None.
+            attr_to_sum (Optional[Union[Dict[str, List[str]], List[str]]], optional): 
+                List or dictionary mapping column names to sum aggregation strategies. 
+                Defaults to None.
             attr_to_mean (Optional[List[str]], optional): List of column names to 
                 aggregate using mean calculations. Defaults to None.
             land_polygons_path (Optional[PathLike], optional): Path to the vector 
@@ -270,7 +274,7 @@ class H3SummaryStager:
                 h3_res=h3_res,
                 land_polygons_path=land_polygons_path,
                 dissolve_overlaps=dissolve_overlaps,
-                intersect_h3_cells=intersect_h3_cells,
+                h3_intersect_cells=h3_intersect_cells,
                 area_epsg=area_epsg,
                 attr_to_sum=attr_to_sum,
                 attr_to_mean=attr_to_mean,

@@ -3,7 +3,7 @@
 import argparse
 import logging
 from pathlib import Path
-from typing import Optional, Union, List, Any
+from typing import Optional, Union, List, Any, Dict
 
 import geopandas as gpd
 from shapely.geometry import Polygon
@@ -29,7 +29,7 @@ class H3GridSummaryGenerator:
         logger: Optional[logging.Logger] = None,
         tiles: Optional[TilePathManager] = None,
         out_base_dir: str = "h3",
-        attr_to_sum: Optional[List[str]] = None,
+        attr_to_sum: Optional[Union[Dict[str, List[str]], List[str]]] = None,
         attr_to_mean: Optional[List[str]] = None,
     ):
         self.area_epsg = area_epsg
@@ -38,37 +38,47 @@ class H3GridSummaryGenerator:
         self.tiles = tiles
         self.config = config
         self.out_base_dir = out_base_dir
-        self.attr_to_sum = attr_to_sum or []
+
+        if isinstance(attr_to_sum, dict):
+            self.attr_split_across_cells = attr_to_sum.get("split_across_cells", [])
+            self.attr_anchor_to_centroid = attr_to_sum.get("anchor_to_centroid", [])
+        elif isinstance(attr_to_sum, list):
+            # Backward compatibility: flat list defaults to anchor_to_centroid
+            self.attr_split_across_cells = []
+            self.attr_anchor_to_centroid = attr_to_sum
+        else:
+            self.attr_split_across_cells = []
+            self.attr_anchor_to_centroid = []
         self.attr_to_mean = attr_to_mean or []
 
-    def feature_to_h3_index(self, geom, res: int, intersect_h3_cells: bool) -> Optional[Union[str, set[str]]]:
+    def feature_to_h3_index(self, geom, res: int, h3_intersect_cells: bool) -> Optional[Union[str, set[str]]]:
         """Routes a given geometry to H3 cells based on the split configuration.
         
         Points use their exact coordinates. For polygons and other geometries:
-        - If intersect_h3_cells is False, routes to a single H3 cell based on the centroid.
-        - If intersect_h3_cells is True, routes to all intersecting H3 cells.
+        - If h3_intersect_cells is False, routes to a single H3 cell based on the centroid.
+        - If h3_intersect_cells is True, routes to all intersecting H3 cells.
 
         Args:
             geom: The Shapely geometry object to process (e.g., Point, Polygon).
             res (int): The H3 resolution level to use for the cell index.
-            intersect_h3_cells (bool): Whether to return a set of all intersecting cells 
+            h3_intersect_cells (bool): Whether to return a set of all intersecting cells 
                 or just a single cell based on the centroid.
 
         Returns:
-            Optional[Union[str, set[str]]]: A single H3 string if intersect_h3_cells=False, 
-                a set of H3 strings if intersect_h3_cells=True, or None if geometry is empty.
+            Optional[Union[str, set[str]]]: A single H3 string if h3_intersect_cells=False, 
+                a set of H3 strings if h3_intersect_cells=True, or None if geometry is empty.
         """
         if geom is None or geom.is_empty:
             return None
 
         if geom.geom_type == "Point":
             cell = h3.latlng_to_cell(geom.y, geom.x, res)
-            return {cell} if intersect_h3_cells else cell
+            return {cell} if h3_intersect_cells else cell
 
         # for Polygons, MultiPolygons, and all other geometries:
         # if no feature split, calculate the centroid and assign the entire feature to that single cell
         centroid = geom.centroid
-        if not intersect_h3_cells:
+        if not h3_intersect_cells:
             return h3.latlng_to_cell(centroid.y, centroid.x, res)
         # else, get all cells associated with it
         else:
@@ -192,7 +202,7 @@ class H3GridSummaryGenerator:
         input_path: Path,
         area_epsg: int,
         dissolve_overlaps: bool = False,
-        attr_to_sum: list[str] | None = None,
+        attr_to_sum: dict[str, list[str]] | list[str] | None = None,
         attr_to_mean: list[str] | None = None,
     ) -> tuple[gpd.GeoDataFrame | None, bool]:
         """Loads staging file, validates CRS, applies tile filters, and computes feature areas."""
@@ -209,9 +219,21 @@ class H3GridSummaryGenerator:
                 if gdf.empty:
                     self.logger.info("All features filtered out (%s). Skipping file.", col)
                     return None, False
-        if dissolve_overlaps:
-            gdf = self._union_overlapping_features(gdf, attr_to_sum, attr_to_mean)
 
+        if dissolve_overlaps:
+            # extract all sum attributes into a single flat list for dissolving
+            if isinstance(attr_to_sum, dict):
+                all_sum_cols = (
+                    attr_to_sum.get("split_across_cells", [])
+                    + attr_to_sum.get("anchor_to_centroid", [])
+                )
+            else:
+                all_sum_cols = attr_to_sum or []
+
+            safe_mean = attr_to_mean or []
+            gdf = self._union_overlapping_features(gdf, all_sum_cols, safe_mean)
+
+        # calculate polygon areas for prorated mathematical splitting later
         has_polygons = any(gt in ("Polygon", "MultiPolygon") for gt in gdf.geom_type.unique())
         if has_polygons:
             gdf["area_km2"] = gdf.to_crs(epsg=area_epsg).geometry.area / 1e6
@@ -219,7 +241,7 @@ class H3GridSummaryGenerator:
             gdf["area_km2"] = 0.0
 
         return gdf, has_polygons
-
+        
     def _union_overlapping_features(
         self,
         gdf: gpd.GeoDataFrame,
@@ -248,9 +270,6 @@ class H3GridSummaryGenerator:
         # map original features to their unioned cluster component
         joined = gpd.sjoin(gdf, unioned_gdf, how="inner", predicate="intersects")
 
-        attr_to_sum = attr_to_sum or []
-        attr_to_mean = attr_to_mean or []
-
         # aggregate attributes for each cluster
         agg_dict = {}
         for col in attr_to_sum:
@@ -274,15 +293,16 @@ class H3GridSummaryGenerator:
         self,
         row: Any,
         res: int,
-        intersect_h3_cells: bool,
+        h3_intersect_cells: bool,
         has_polygons: bool,
         project_to_area: Optional[Any],
-        attr_to_sum: List[str],
+        attr_split_across_cells: List[str],
+        attr_anchor_to_centroid: List[str],
         attr_to_mean: List[str],
     ) -> List[dict]:
         """Generates H3 cell records for a single feature row at a given resolution."""
         geom = row.geometry
-        h3_indices = self.feature_to_h3_index(geom, res, intersect_h3_cells)
+        h3_indices = self.feature_to_h3_index(geom, res, h3_intersect_cells)
         if not h3_indices:
             return []
 
@@ -290,13 +310,12 @@ class H3GridSummaryGenerator:
             h3_indices = {h3_indices}
 
         needs_split = (
-            intersect_h3_cells 
+            h3_intersect_cells 
             and has_polygons 
             and geom.geom_type not in ("Point", "MultiPoint") 
             and len(h3_indices) > 1
         )
 
-        # Determine cell for assigning whole feature count
         if needs_split:
             centroid = geom.centroid
             centroid_cell = h3.latlng_to_cell(centroid.y, centroid.x, res)
@@ -307,6 +326,7 @@ class H3GridSummaryGenerator:
         records = []
         for h3_cell in h3_indices:
             piece_area = row.area_km2 if has_polygons else 0.0
+            ratio = 1.0
 
             if needs_split:
                 cell_boundary = h3.cell_to_boundary(h3_cell)
@@ -323,16 +343,29 @@ class H3GridSummaryGenerator:
 
                 intersection_proj = transform(intersection, project_to_area, interleaved=False)
                 piece_area = intersection_proj.area / 1e6
+                
+                # calculate the percentage of the original feature this cell contains
+                if row.area_km2 > 0:
+                    ratio = piece_area / row.area_km2
+                else:
+                    ratio = 0.0
 
             rec = {
                 "h3_index": h3_cell,
                 "_count": 1 if h3_cell == count_cell else 0,
             }
 
-            for col in attr_to_sum:
+            # prorated sum attributes (split across cells based on area ratio)
+            for col in attr_split_across_cells:
                 val = getattr(row, col, 0.0)
-                rec[f"sum_{col}"] = val if h3_cell == count_cell else 0
+                rec[f"sum_{col}"] = val * ratio
 
+            # anchored sum attributes (100% to centroid cell only)
+            for col in attr_anchor_to_centroid:
+                val = getattr(row, col, 0.0)
+                rec[f"sum_{col}"] = val if h3_cell == count_cell else 0.0
+
+            # mean attributes (anchored to centroid cell to preserve valid denominators)
             for col in attr_to_mean:
                 val = getattr(row, col, 0.0)
                 rec[f"mean_{col}"] = val if h3_cell == count_cell else 0.0
@@ -350,7 +383,8 @@ class H3GridSummaryGenerator:
         res: int,
         input_path: Path,
         output_path: Path,
-        attr_to_sum: List[str],
+        attr_split_across_cells: List[str],
+        attr_anchor_to_centroid: List[str],
         attr_to_mean: List[str],
     ) -> None:
         """Aggregates feature records for a single resolution and writes to a parquet chunk."""
@@ -361,10 +395,17 @@ class H3GridSummaryGenerator:
         df = pd.DataFrame(records)
 
         agg_dict = {"_count": "sum"}
-        for col in attr_to_sum:
+        
+        # both prorated and anchored variables are summed at the cell aggregation level
+        for col in attr_split_across_cells:
             agg_dict[f"sum_{col}"] = "sum"
+            
+        for col in attr_anchor_to_centroid:
+            agg_dict[f"sum_{col}"] = "sum"
+            
         for col in attr_to_mean:
             agg_dict[f"mean_{col}"] = "sum"
+            
         if "area_km2" in df.columns:
             agg_dict["area_km2"] = "sum"
 
@@ -382,25 +423,38 @@ class H3GridSummaryGenerator:
         input_path: Union[str, Path],
         output_paths: dict,
         h3_res: List[int],
-        intersect_h3_cells: bool = False,
+        h3_intersect_cells: bool = False,
         dissolve_overlaps: bool = False,
         land_polygons_path: Optional[Union[str, Path]] = None,
         area_epsg: Optional[int] = None,
-        attr_to_sum: Optional[List[str]] = None,
+        attr_to_sum: Optional[Union[Dict[str, List[str]], List[str]]] = None,
         attr_to_mean: Optional[List[str]] = None,
     ) -> None:
         """Orchestrates input staging, feature splitting, and intermediate chunk writing."""
         area_epsg = area_epsg or self.area_epsg
-        attr_to_sum = attr_to_sum if attr_to_sum is not None else self.attr_to_sum
+        
+        # parse local attribute overrides or fall back to instance configurations
+        if attr_to_sum is not None:
+            if isinstance(attr_to_sum, dict):
+                split_across = attr_to_sum.get("split_across_cells", [])
+                anchor_to = attr_to_sum.get("anchor_to_centroid", [])
+            else:
+                split_across = []
+                anchor_to = attr_to_sum
+        else:
+            split_across = self.attr_split_across_cells
+            anchor_to = self.attr_anchor_to_centroid
+            
         attr_to_mean = attr_to_mean if attr_to_mean is not None else self.attr_to_mean
         input_path = Path(input_path)
 
         # ingest, reproject, filter, and calculate base areas
+        # reconstruct dict to ensure _prep_staging_gdf captures both lists for the dissolve step
         gdf, has_polygons = self._prep_staging_gdf(
             input_path=input_path,
             area_epsg=area_epsg,
             dissolve_overlaps=dissolve_overlaps,
-            attr_to_sum=attr_to_sum,
+            attr_to_sum={"split_across_cells": split_across, "anchor_to_centroid": anchor_to},
             attr_to_mean=attr_to_mean,
         )
         if gdf is None or gdf.empty:
@@ -408,7 +462,7 @@ class H3GridSummaryGenerator:
 
         # pre-compile projection transformer for feature splitting
         project_to_area = None
-        if intersect_h3_cells and has_polygons:
+        if h3_intersect_cells and has_polygons:
             project_to_area = pyproj.Transformer.from_crs(
                 pyproj.CRS("EPSG:4326"), 
                 pyproj.CRS(f"EPSG:{area_epsg}"), 
@@ -425,10 +479,11 @@ class H3GridSummaryGenerator:
                 records = self._process_feature_for_res(
                     row=row,
                     res=res,
-                    intersect_h3_cells=intersect_h3_cells,
+                    h3_intersect_cells=h3_intersect_cells,
                     has_polygons=has_polygons,
                     project_to_area=project_to_area,
-                    attr_to_sum=attr_to_sum,
+                    attr_split_across_cells=split_across,
+                    attr_anchor_to_centroid=anchor_to,
                     attr_to_mean=attr_to_mean,
                 )
                 records_by_res[res].extend(records)
@@ -440,10 +495,10 @@ class H3GridSummaryGenerator:
                 res=res,
                 input_path=input_path,
                 output_path=Path(output_paths[res]),
-                attr_to_sum=attr_to_sum,
+                attr_split_across_cells=split_across,
+                attr_anchor_to_centroid=anchor_to,
                 attr_to_mean=attr_to_mean,
             )
-
 
 
     def combine_h3_summaries(
@@ -452,7 +507,7 @@ class H3GridSummaryGenerator:
         h3_res: List[int],
         land_polygons_path: Optional[PathLike] = None,
         area_epsg: Optional[int] = None,
-        attr_to_sum: Optional[List[str]] = None,
+        attr_to_sum: Optional[Union[Dict[str, List[str]], List[str]]] = None,
         attr_to_mean: Optional[List[str]] = None,
     ) -> None:
         """Aggregates intermediate Parquet chunks into final GeoPackage datasets.
@@ -473,8 +528,9 @@ class H3GridSummaryGenerator:
             area_epsg (Optional[int], optional): The EPSG code for the equal-area 
                 coordinate reference system used in area calculations. Defaults to 
                 the instance's area_epsg.
-            attr_to_sum (Optional[List[str]], optional): List of column names that 
-                were aggregated by summation. Defaults to the instance's attr_to_sum.
+            attr_to_sum (Optional[Union[Dict[str, List[str]], List[str]]], optional): 
+                Dictionary specifying which summation strategy to apply ('split_across_cells' 
+                or 'anchor_to_centroid'). Defaults to the instance's configured lists.
             attr_to_mean (Optional[List[str]], optional): List of column names that 
                 require a final mean calculation. Defaults to the instance's attr_to_mean.
         """
@@ -482,14 +538,30 @@ class H3GridSummaryGenerator:
             area_epsg = self.area_epsg
         if land_polygons_path is None:
             land_polygons_path = self.land_polygons_path
-        if attr_to_sum is None:
-            attr_to_sum = self.attr_to_sum
+            
+        # parse local attribute overrides or fall back to instance configurations
+        if attr_to_sum is not None:
+            if isinstance(attr_to_sum, dict):
+                split_across = attr_to_sum.get("split_across_cells", [])
+                anchor_to = attr_to_sum.get("anchor_to_centroid", [])
+            else:
+                split_across = []
+                anchor_to = attr_to_sum
+        else:
+            split_across = self.attr_split_across_cells
+            anchor_to = self.attr_anchor_to_centroid
+            
         if attr_to_mean is None:
             attr_to_mean = self.attr_to_mean
 
         agg_dict = {"_count": "sum"}
-        for col in attr_to_sum:
+        
+        # combine both sum strategies for final dataset aggregation
+        for col in split_across:
             agg_dict[f"sum_{col}"] = "sum"
+        for col in anchor_to:
+            agg_dict[f"sum_{col}"] = "sum"
+            
         for col in attr_to_mean:
             agg_dict[f"mean_{col}"] = "sum"
 
@@ -516,14 +588,17 @@ class H3GridSummaryGenerator:
 
             # finalize means
             for col in attr_to_mean:
-                final_grouped[f"mean_{col}"] = final_grouped[f"mean_{col}"] / final_grouped["_count"]
+                # Add a guard against divide by zero just in case
+                final_grouped[f"mean_{col}"] = (
+                    final_grouped[f"mean_{col}"] / final_grouped["_count"].replace(0, 1)
+                )
             
             # generate geometries for h3 cells
             final_grouped["geometry"] = final_grouped["h3_index"].apply(self.h3_to_polygon)
             out_gdf = gpd.GeoDataFrame(final_grouped, geometry="geometry", crs="EPSG:4326")
             
-            # rename the h3 index column to identifier for easier Cesium stuff
-            out_gdf.rename(columns={"h3_index": "identifier"})
+            # rename the h3 index column to identifier for easier Cesium stuff (Fixed missing inplace mapping!)
+            out_gdf = out_gdf.rename(columns={"h3_index": "identifier"})
 
             # calculate % cover
             if "area_km2" in out_gdf.columns and area_epsg is not None:
@@ -532,16 +607,12 @@ class H3GridSummaryGenerator:
                 
                 # calculate cover fraction
                 out_gdf["percent_cover"] = (out_gdf["area_km2"] / cell_area_km2) * 100
-                
-                # Clip to 100 to handle microscopic floating-point projection artifacts
-                #out_gdf["percent_cover"] = out_gdf["percent_cover"].clip(upper=100)
 
             if land_polygons_path is not None:
                 out_gdf = self.add_land_metrics(out_gdf, land_polygons_path, area_epsg=area_epsg)
             
             out_gdf.to_file(output_path, driver="GPKG", mode="w")
             self.logger.info("Finished writing final GeoPackage for resolution %s.", res)
-
 
     
     def valid_h3_resolution(self, value: str) -> int:
