@@ -241,7 +241,7 @@ class H3GridSummaryGenerator:
             gdf["area_km2"] = 0.0
 
         return gdf, has_polygons
-        
+
     def _union_overlapping_features(
         self,
         gdf: gpd.GeoDataFrame,
@@ -352,7 +352,7 @@ class H3GridSummaryGenerator:
 
             rec = {
                 "h3_index": h3_cell,
-                "_count": 1 if h3_cell == count_cell else 0,
+                "_count": ratio
             }
 
             # prorated sum attributes (split across cells based on area ratio)
