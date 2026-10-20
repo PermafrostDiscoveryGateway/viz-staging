@@ -213,12 +213,15 @@ class H3GridSummaryGenerator:
         if gdf.crs.to_epsg() != 4326:
             gdf = gdf.to_crs(epsg=4326)
 
-        for col in ["staging_centroid_within_tile", "staging_duplicated"]:
-            if col in gdf.columns:
-                gdf = gdf[gdf[col].astype(bool)]
-                if gdf.empty:
-                    self.logger.info("All features filtered out (%s). Skipping file.", col)
-                    return None, False
+        if "staging_centroid_within_tile" in gdf.columns:
+            gdf = gdf[gdf["staging_centroid_within_tile"].astype(bool)]
+
+        if "staging_duplicated" in gdf.columns:
+            gdf = gdf[~gdf["staging_duplicated"].astype(bool)]
+
+        if gdf.empty:
+            self.logger.info("All features filtered out during tile deduplication. Skipping file.")
+            return None, False
 
         if dissolve_overlaps:
             # extract all sum attributes into a single flat list for dissolving
