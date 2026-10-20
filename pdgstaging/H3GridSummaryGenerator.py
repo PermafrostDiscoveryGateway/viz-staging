@@ -304,6 +304,7 @@ class H3GridSummaryGenerator:
         attr_to_mean: List[str],
     ) -> List[dict]:
         """Generates H3 cell records for a single feature row at a given resolution."""
+
         geom = row.geometry
         h3_indices = self.feature_to_h3_index(geom, res, h3_intersect_cells)
         if not h3_indices:
@@ -447,6 +448,14 @@ class H3GridSummaryGenerator:
         else:
             split_across = self.attr_split_across_cells
             anchor_to = self.attr_anchor_to_centroid
+
+        if not h3_intersect_cells and attr_split_across_cells:
+            self.logger.warning(
+                "Config contradiction: 'attr_to_sum' specifies 'split_across_cells', "
+                "but 'h3_intersect_cells' is False. All attributes will be assigned "
+                "entirely to the centroid cell."
+            )
+
             
         attr_to_mean = attr_to_mean if attr_to_mean is not None else self.attr_to_mean
         input_path = Path(input_path)
