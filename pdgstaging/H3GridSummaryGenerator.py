@@ -449,7 +449,7 @@ class H3GridSummaryGenerator:
             split_across = self.attr_split_across_cells
             anchor_to = self.attr_anchor_to_centroid
 
-        if not h3_intersect_cells and attr_split_across_cells:
+        if not h3_intersect_cells and split_across:
             self.logger.warning(
                 "Config contradiction: 'attr_to_sum' specifies 'split_across_cells', "
                 "but 'h3_intersect_cells' is False. All attributes will be assigned "
