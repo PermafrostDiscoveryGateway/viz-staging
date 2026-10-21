@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p.add_argument("--h3-input", help="Input vector file for H3 summary (.shp/.gpkg)")
     p.add_argument("--h3-output", help="Output H3 summary file (.gpkg)")
-    p.add_argument("--h3-res", type=valid_h3_resolution, help="H3 resolution (1–15)")
+    p.add_argument("--h3-res", type=valid_h3_resolution, help="H3 resolution (1-15)")
     p.add_argument("--sum-cols", nargs="*", default=[], help="Attribute columns to sum")
     p.add_argument("--mean-cols", nargs="*", default=[], help="Attribute columns to average")
     p.add_argument("--land-polygons", default=None, help="Optional land/coastline polygon dataset")
