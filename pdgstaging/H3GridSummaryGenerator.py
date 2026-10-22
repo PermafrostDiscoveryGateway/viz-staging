@@ -361,18 +361,21 @@ class H3GridSummaryGenerator:
 
             # prorated sum attributes (split across cells based on area ratio)
             for col in attr_split_across_cells:
-                val = getattr(row, col, 0.0)
-                rec[f"sum_{col}"] = val * ratio
+                if hasattr(row, col):
+                    val = getattr(row, col)
+                    rec[f"sum_{col}"] = val * ratio
 
             # anchored sum attributes (100% to centroid cell only)
             for col in attr_anchor_to_centroid:
-                val = getattr(row, col, 0.0)
-                rec[f"sum_{col}"] = val if h3_cell == count_cell else 0.0
+                if hasattr(row, col):
+                    val = getattr(row, col, 0.0)
+                    rec[f"sum_{col}"] = val if h3_cell == count_cell else 0.0
 
             # mean attributes (anchored to centroid cell to preserve valid denominators)
             for col in attr_to_mean:
-                val = getattr(row, col, 0.0)
-                rec[f"mean_{col}"] = val if h3_cell == count_cell else 0.0
+                if hasattr(row, col):
+                    val = getattr(row, col, 0.0)
+                    rec[f"mean_{col}"] = val if h3_cell == count_cell else 0.0
 
             if has_polygons:
                 rec["area_km2"] = piece_area
