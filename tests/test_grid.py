@@ -1,5 +1,5 @@
 import geopandas as gpd
-from shapely.geometry import Point, box
+from shapely.geometry import Point
 from pdgstaging.Grid import Grid, TMSGrid
 
 def test_grid_sjoin_points_fastpath():
