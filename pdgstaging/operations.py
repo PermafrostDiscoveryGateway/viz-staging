@@ -254,15 +254,15 @@ def _check_matching(frames):
         raise ValueError("shard tile mismatch")
 
 
-def _deduplicated_data(shards, deduplication):
-    """Concatenate shards and flag duplicated features in the combined data.
+def _deduplicated_data(frames, deduplication):
+    """Concatenate shard frames and flag duplicated features in the result.
 
     Duplicates are labelled in the ``staging_duplicated`` column, not removed.
 
     Parameters
     ----------
-    shards : list of pathlib.Path
-        The shard files to read and combine.
+    frames : list of geopandas.GeoDataFrame
+        The already-read shard contents to combine.
     deduplication : str or dict
         Either a method name (``"neighbors"`` or ``"footprints"``) or a
         mapping with a ``"method"`` key and optional ``"options"`` dict
@@ -278,9 +278,7 @@ def _deduplicated_data(shards, deduplication):
     ValueError
         If the deduplication method is unknown.
     """
-    data = gpd.GeoDataFrame(
-        pd.concat([gpd.read_file(path) for path in shards], ignore_index=True)
-    )
+    data = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True))
     method = deduplication if isinstance(deduplication, str) else deduplication.get("method")
     options = {} if isinstance(deduplication, str) else deduplication.get("options", {})
     if method == "neighbors":
@@ -337,7 +335,7 @@ def merge_staged_tile(shard_paths, output_path, *, deduplication=None, overwrite
         if deduplication is None:
             merged = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True))
         else:
-            merged = _deduplicated_data(shards, deduplication)
+            merged = _deduplicated_data(frames, deduplication)
         merged.to_file(temporary)
         if not _valid_geopackage(temporary):
             raise ValueError(f"invalid merged tile: {temporary}")
