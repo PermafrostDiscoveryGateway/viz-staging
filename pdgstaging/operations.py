@@ -255,7 +255,9 @@ def _check_matching(frames):
 
 
 def _deduplicated_data(shards, deduplication):
-    """Concatenate shards and deduplicate the combined features.
+    """Concatenate shards and flag duplicated features in the combined data.
+
+    Duplicates are labelled in the ``staging_duplicated`` column, not removed.
 
     Parameters
     ----------
@@ -269,7 +271,7 @@ def _deduplicated_data(shards, deduplication):
     Returns
     -------
     geopandas.GeoDataFrame
-        The combined, deduplicated features.
+        The combined features with duplicates flagged.
 
     Raises
     ------
@@ -299,7 +301,8 @@ def merge_staged_tile(shard_paths, output_path, *, deduplication=None, overwrite
         The destination tile file to write.
     deduplication : str or dict, optional
         Deduplication spec forwarded to ``_deduplicated_data``; when None the
-        frames are concatenated without deduplication.
+        frames are concatenated unchanged. Duplicates are flagged in the
+        ``staging_duplicated`` column and kept, so callers filter on it.
     overwrite : bool, default False
         When True, rewrite an existing output; otherwise reuse a valid output
         and raise on a stale one.
