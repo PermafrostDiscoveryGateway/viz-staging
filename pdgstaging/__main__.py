@@ -3,7 +3,7 @@
 import argparse
 import json
 
-from .operations import stage_source
+from .operations import merge_staged_tile, stage_source
 
 
 def _json(text):
@@ -28,7 +28,7 @@ def build_parser():
     Returns
     -------
     argparse.ArgumentParser
-        Parser with the ``stage-source`` subcommand.
+        Parser with the ``stage-source`` and ``merge-tile`` subcommands.
     """
     parser = argparse.ArgumentParser(
         prog="python -m pdgstaging", description="Run a pdgstaging operation"
@@ -57,6 +57,17 @@ def build_parser():
     stage.add_argument("--tolerance", default=None, type=float)
     stage.add_argument("--overwrite", action="store_true")
 
+    merge = subs.add_parser("merge-tile", help="Merge explicit shards into one tile")
+    merge.add_argument("output_path")
+    merge.add_argument("shard_paths", nargs="+")
+    merge.add_argument("--deduplication", choices=["neighbors", "footprints"])
+    merge.add_argument(
+        "--deduplication-options",
+        default=None,
+        type=_json,
+        help="JSON object of options for the deduplication method",
+    )
+    merge.add_argument("--overwrite", action="store_true")
     return parser
 
 
@@ -77,18 +88,32 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        result = stage_source(
-            args.input_path,
-            args.shard_root,
-            args.source_key,
-            tms_id=args.tms_id,
-            z=args.z,
-            path_structure=tuple(args.path_structure),
-            properties=args.properties,
-            input_crs=args.input_crs,
-            tolerance=args.tolerance,
-            overwrite=args.overwrite,
-        )
+        if args.operation == "stage-source":
+            result = stage_source(
+                args.input_path,
+                args.shard_root,
+                args.source_key,
+                tms_id=args.tms_id,
+                z=args.z,
+                path_structure=tuple(args.path_structure),
+                properties=args.properties,
+                input_crs=args.input_crs,
+                tolerance=args.tolerance,
+                overwrite=args.overwrite,
+            )
+        else:
+            deduplication = args.deduplication
+            if deduplication and args.deduplication_options:
+                deduplication = {
+                    "method": deduplication,
+                    "options": args.deduplication_options,
+                }
+            result = merge_staged_tile(
+                args.shard_paths,
+                args.output_path,
+                deduplication=deduplication,
+                overwrite=args.overwrite,
+            )
     except (OSError, ValueError) as error:
         parser.error(str(error))
     print(json.dumps(result, default=str))
