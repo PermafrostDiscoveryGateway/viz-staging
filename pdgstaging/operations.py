@@ -1,3 +1,10 @@
+"""Explicit staging operations over named input and output files.
+
+``stage_source`` writes one source's tile shards and ``merge_staged_tile``
+merges an explicit shard list into one tile. Both write through a temporary
+sibling file, validate it, and atomically rename it into place.
+"""
+
 import os
 from pathlib import Path
 
@@ -105,7 +112,9 @@ def stage_source(
     path_structure : tuple
         Path template components passed to ``TilePathManager``.
     properties : dict
-        Property-name mapping with ``"tile"`` and ``"centroid_tile"`` keys.
+        Staging property-name mapping with the keys ``area``, ``centroid_x``,
+        ``centroid_y``, ``filename``, ``identifier``, ``tile``,
+        ``centroid_tile`` and ``centroid_within_tile``.
     input_crs : optional
         Coordinate reference system assigned to the input when needed.
     tolerance : float, optional
