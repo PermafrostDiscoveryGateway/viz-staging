@@ -182,3 +182,26 @@ def test_merge_overwrite_failed_write_leaves_no_output(tmp_path, monkeypatch):
 
     assert not output.exists()
     assert list(tmp_path.glob("*.tmp*")) == []
+
+
+def test_merge_flags_duplicates_without_removing_them(tmp_path):
+    from pdgstaging.operations import merge_staged_tile
+
+    paths = []
+    for name, geometry in (("a", box(0, 0, 1, 1)), ("b", box(0.01, 0.01, 1, 1))):
+        paths.append(tmp_path / f"{name}.gpkg")
+        gpd.GeoDataFrame(
+            {"src": [name], "area": [geometry.area], "cx": [geometry.centroid.x],
+             "cy": [geometry.centroid.y]},
+            geometry=[geometry], crs="EPSG:4326",
+        ).to_file(paths[-1])
+    options = {"split_by": "src", "prop_area": "area", "prop_centroid_x": "cx",
+               "prop_centroid_y": "cy", "keep_rules": [("area", "larger")]}
+
+    merged = gpd.read_file(merge_staged_tile(
+        paths, tmp_path / "tile.gpkg",
+        deduplication={"method": "neighbors", "options": options},
+    ))
+
+    assert len(merged) == 2
+    assert merged.set_index("src")["staging_duplicated"].to_dict() == {"a": False, "b": True}

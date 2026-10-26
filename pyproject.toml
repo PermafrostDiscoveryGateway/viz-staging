@@ -32,7 +32,7 @@ dependencies = [
     "filelock >= 3.6, < 4.0",
     "coloraide >= 0.10, < 1",
     "colormaps == 0.4.0",
-    "pyarrow",
+    "pyarrow < 17.0.0",
     "h3"
 ]
 

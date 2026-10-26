@@ -20,7 +20,6 @@ import os
 import geopandas as gpd
 import pandas as pd
 from pdgstaging.TileStager import TileStager
-import parsl
 from parsl import python_app
 
 

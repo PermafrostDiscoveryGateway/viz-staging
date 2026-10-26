@@ -1,3 +1,10 @@
+"""Explicit staging operations over named input and output files.
+
+``stage_source`` writes one source's tile shards and ``merge_staged_tile``
+merges an explicit shard list into one tile. Both write through a temporary
+sibling file, validate it, and atomically rename it into place.
+"""
+
 import os
 from pathlib import Path
 
@@ -105,7 +112,9 @@ def stage_source(
     path_structure : tuple
         Path template components passed to ``TilePathManager``.
     properties : dict
-        Property-name mapping with ``"tile"`` and ``"centroid_tile"`` keys.
+        Staging property-name mapping with the keys ``area``, ``centroid_x``,
+        ``centroid_y``, ``filename``, ``identifier``, ``tile``,
+        ``centroid_tile`` and ``centroid_within_tile``.
     input_crs : optional
         Coordinate reference system assigned to the input when needed.
     tolerance : float, optional
@@ -254,13 +263,15 @@ def _check_matching(frames):
         raise ValueError("shard tile mismatch")
 
 
-def _deduplicated_data(shards, deduplication):
-    """Concatenate shards and deduplicate the combined features.
+def _deduplicated_data(frames, deduplication):
+    """Concatenate shard frames and flag duplicated features in the result.
+
+    Duplicates are labelled in the ``staging_duplicated`` column, not removed.
 
     Parameters
     ----------
-    shards : list of pathlib.Path
-        The shard files to read and combine.
+    frames : list of geopandas.GeoDataFrame
+        The already-read shard contents to combine.
     deduplication : str or dict
         Either a method name (``"neighbors"`` or ``"footprints"``) or a
         mapping with a ``"method"`` key and optional ``"options"`` dict
@@ -269,16 +280,14 @@ def _deduplicated_data(shards, deduplication):
     Returns
     -------
     geopandas.GeoDataFrame
-        The combined, deduplicated features.
+        The combined features with duplicates flagged.
 
     Raises
     ------
     ValueError
         If the deduplication method is unknown.
     """
-    data = gpd.GeoDataFrame(
-        pd.concat([gpd.read_file(path) for path in shards], ignore_index=True)
-    )
+    data = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True))
     method = deduplication if isinstance(deduplication, str) else deduplication.get("method")
     options = {} if isinstance(deduplication, str) else deduplication.get("options", {})
     if method == "neighbors":
@@ -299,7 +308,8 @@ def merge_staged_tile(shard_paths, output_path, *, deduplication=None, overwrite
         The destination tile file to write.
     deduplication : str or dict, optional
         Deduplication spec forwarded to ``_deduplicated_data``; when None the
-        frames are concatenated without deduplication.
+        frames are concatenated unchanged. Duplicates are flagged in the
+        ``staging_duplicated`` column and kept, so callers filter on it.
     overwrite : bool, default False
         When True, rewrite an existing output; otherwise reuse a valid output
         and raise on a stale one.
@@ -334,7 +344,7 @@ def merge_staged_tile(shard_paths, output_path, *, deduplication=None, overwrite
         if deduplication is None:
             merged = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True))
         else:
-            merged = _deduplicated_data(shards, deduplication)
+            merged = _deduplicated_data(frames, deduplication)
         merged.to_file(temporary)
         if not _valid_geopackage(temporary):
             raise ValueError(f"invalid merged tile: {temporary}")
