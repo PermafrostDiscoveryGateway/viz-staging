@@ -25,7 +25,7 @@ def sample_staging_data(tmp_path: Path):
     })
     gdf1 = gpd.GeoDataFrame(df1, geometry=[p1, p2], crs="EPSG:4326")
     file1 = tmp_path / "staging_part1.gpkg"
-    gdf1.to_file(file1, driver="GPKG")
+    gdf1.to_file(file1, driver="GPKG", engine = "pyogrio")
 
     # File 2: 2 more features right in the same area
     p3 = Polygon([(-150.0, 67.0), (-150.0, 68.0), (-149.0, 68.0), (-149.0, 67.0)])
@@ -38,7 +38,7 @@ def sample_staging_data(tmp_path: Path):
     })
     gdf2 = gpd.GeoDataFrame(df2, geometry=[p3, p4], crs="EPSG:4326")
     file2 = tmp_path / "staging_part2.gpkg"
-    gdf2.to_file(file2, driver="GPKG")
+    gdf2.to_file(file2, driver="GPKG", engine = "pyogrio")
 
     return [file1, file2]
 

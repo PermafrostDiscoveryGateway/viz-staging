@@ -743,7 +743,7 @@ class TileStager:
             # Ignore the FutureWarning raised from geopandas issue 2347
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
-                data.to_file(tile_path, mode=mode)
+                data.to_file(tile_path, mode=mode, engine="pyogrio")
 
             # convert each tile from string format to morecantile format
             # so it can be added to summary

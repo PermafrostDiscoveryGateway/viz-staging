@@ -626,7 +626,7 @@ class H3GridSummaryGenerator:
             if land_polygons_path is not None:
                 out_gdf = self.add_land_metrics(out_gdf, land_polygons_path, area_epsg=area_epsg)
             
-            out_gdf.to_file(output_path, driver="GPKG", mode="w")
+            out_gdf.to_file(output_path, driver="GPKG", mode="w", engine="pyogrio")
             self.logger.info("Finished writing final GeoPackage for resolution %s.", res)
 
     
