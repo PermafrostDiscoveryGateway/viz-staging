@@ -15,6 +15,14 @@ from filelock import FileLock
 from typing import Optional
 
 from . import TilePathManager, TMSGrid
+from .antimeridian import split_at_antimeridian, unwrap_antimeridian, wrap_longitude
+
+# Temporary columns that carry the centroid and area of antimeridian-crossing
+# polygons (taken before they are split at 180 degrees) from set_crs to
+# add_properties. add_properties consumes and drops them.
+_AM_AREA = "_antimeridian_area"
+_AM_CENTROID_X = "_antimeridian_centroid_x"
+_AM_CENTROID_Y = "_antimeridian_centroid_y"
 
 
 class TileStager:
@@ -351,6 +359,56 @@ class TileStager:
             f"Re-projected {len(gdf.index)} polygons in "
             f"{datetime.now() - start_time}"
         )
+        return self.fix_antimeridian(gdf)
+
+    def fix_antimeridian(self, gdf):
+        """
+        Repair polygons whose rings cross the antimeridian after reprojection
+        to a geographic CRS. Each such polygon is unwrapped so that it is
+        contiguous, and split at 180 degrees so that it stays within the TMS
+        extent. Its area and centroid are taken from the unwrapped shape and
+        saved in temporary columns that ``add_properties`` consumes.
+
+        Parameters
+        ----------
+        gdf : GeoDataFrame
+            The GeoDataFrame, already in the CRS of the TMS.
+
+        Returns
+        -------
+        GeoDataFrame
+            The GeoDataFrame, unchanged if no polygon crosses the antimeridian.
+        """
+        if gdf.crs is None or not gdf.crs.is_geographic:
+            return gdf
+
+        geometries = list(gdf.geometry)
+        unwrapped = [unwrap_antimeridian(g) for g in geometries]
+        changed = np.array([u is not g for u, g in zip(unwrapped, geometries)], dtype=bool)
+        if not changed.any():
+            return gdf
+
+        self.logger.info(
+            f"Unwrapping and splitting {int(changed.sum())} polygons that cross "
+            "the antimeridian."
+        )
+        unwrapped_series = gpd.GeoSeries(
+            [u if c else None for u, c in zip(unwrapped, changed)], crs=gdf.crs
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            areas = unwrapped_series.area
+            centroids = unwrapped_series.centroid
+
+        gdf = gdf.copy()
+        gdf[_AM_AREA] = areas.to_numpy()
+        gdf[_AM_CENTROID_X] = wrap_longitude(centroids.x.to_numpy())
+        gdf[_AM_CENTROID_Y] = centroids.y.to_numpy()
+        gdf["geometry"] = gpd.GeoSeries(
+            [split_at_antimeridian(u) if c else g for u, c, g in zip(unwrapped, changed, geometries)],
+            index=gdf.index,
+            crs=gdf.crs,
+        )
         return gdf
 
     def simplify_geoms(self, gdf, tolerance=None):
@@ -423,6 +481,15 @@ class TileStager:
         gdf[props["centroid_y"]] = centroids.y
         # Clean up centroids to free memory
         del centroids
+
+        # Polygons that crossed the antimeridian were split by set_crs, so use
+        # the area and centroid taken from their unwrapped shape instead.
+        if _AM_AREA in gdf.columns:
+            fixed = gdf[_AM_AREA].notna()
+            gdf.loc[fixed, props["area"]] = gdf.loc[fixed, _AM_AREA]
+            gdf.loc[fixed, props["centroid_x"]] = gdf.loc[fixed, _AM_CENTROID_X]
+            gdf.loc[fixed, props["centroid_y"]] = gdf.loc[fixed, _AM_CENTROID_Y]
+            gdf = gdf.drop(columns=[_AM_AREA, _AM_CENTROID_X, _AM_CENTROID_Y])
 
         # Add source file path, excluding the input dir and any leading slashes
         gdf[props["filename"]] = path.removeprefix(dir_input).strip(os.sep)
