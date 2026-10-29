@@ -150,6 +150,40 @@ The staging process will also output a summary CSV file with one row for each ti
 - **tile_top, tile_right, tile_bottom, tile_left**: The coordinates (bounding box) for the tile
 - **tms_identifier**: The TMS that this tile belongs to
 
+## Operations
+
+Two functions stage and merge tiles with explicit paths. Each writes through a
+temporary sibling file, validates it, and atomically renames it into place.
+With `overwrite=False` (the default) a valid existing output is reused and a
+stale one raises `FileExistsError`.
+
+```python
+from pdgstaging import merge_staged_tile, stage_source
+
+properties = {name: name for name in (
+    "area", "centroid_x", "centroid_y", "filename", "identifier",
+    "tile", "centroid_tile", "centroid_within_tile")}
+shards = stage_source(input_path, shard_root, source_key, tms_id="WGS1984Quad", z=10,
+                      path_structure=("style", "tms", "z", "x", "y"), properties=properties)
+tile = merge_staged_tile(shards, output_path)
+```
+
+`merge_staged_tile(..., deduplication=...)` flags duplicates in the
+`staging_duplicated` column and keeps them; filter on that column to drop them.
+
+The same operations are available as subcommands that print their result as JSON:
+
+```bash
+python -m pdgstaging stage-source input.gpkg shards one --z 10 --properties '{"area": "area", ...}'
+python -m pdgstaging merge-tile tile.gpkg shard-a.gpkg shard-b.gpkg
+```
+
+## H3 summaries
+
+`H3SummaryStager` summarizes vector files into H3 cells at several resolutions.
+It is driven by the `enable_h3` options of [viz-workflow](https://github.com/PermafrostDiscoveryGateway/viz-workflow);
+see [H3 summaries](docs/h3_summaries_algorithm.md) for the algorithm and options.
+
 ## Assumptions
 
 - It is assumed that incoming vector data comprises only valid polygons. **Any non-polygon data is removed**, including multi-polygons, points, lines, or other geometries.
