@@ -10,6 +10,7 @@ For more in depth explanation of some of the configuration options, see:
 - [deduplication](deduplication.md)
 - [footprints for deduplication](footprints.md)
 - [output path structure](tile_path_structure.md)
+- [H3 summaries](h3_summaries_algorithm.md)
 
 ## Supplementary steps
 

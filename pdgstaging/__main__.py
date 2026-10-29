@@ -1,67 +1,124 @@
-import logging
+"""Thin direct subcommands over the pdgstaging operations."""
+
 import argparse
-from pdgstaging import TileStager
-from pdgstaging import H3GridSummaryGenerator
+import json
 
-def valid_h3_resolution(value: str) -> int:
+from .operations import merge_staged_tile, stage_source
+
+
+def _json(text):
+    """Parse a CLI JSON argument into Python data.
+
+    Parameters
+    ----------
+    text : str
+        JSON-encoded argument value.
+
+    Returns
+    -------
+    object
+        The decoded Python value.
+    """
+    return json.loads(text)
+
+
+def build_parser():
+    """Build the CLI parser with one subcommand per operation.
+
+    Returns
+    -------
+    argparse.ArgumentParser
+        Parser with the ``stage-source`` and ``merge-tile`` subcommands.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m pdgstaging", description="Run a pdgstaging operation"
+    )
+    subs = parser.add_subparsers(dest="operation", required=True)
+
+    stage = subs.add_parser("stage-source", help="Stage one source into tile shards")
+    stage.add_argument("input_path")
+    stage.add_argument("shard_root")
+    stage.add_argument("source_key")
+    stage.add_argument("--z", required=True, type=int, help="Maximum zoom level")
+    stage.add_argument("--tms-id", default="WGS1984Quad")
+    stage.add_argument(
+        "--path-structure",
+        default=["style", "tms", "z", "x", "y"],
+        type=_json,
+        help="JSON list of tile path components",
+    )
+    stage.add_argument(
+        "--properties",
+        required=True,
+        type=_json,
+        help='JSON object of property names, e.g. {"tile": "tile", ...}',
+    )
+    stage.add_argument("--input-crs", default=None)
+    stage.add_argument("--tolerance", default=None, type=float)
+    stage.add_argument("--overwrite", action="store_true")
+
+    merge = subs.add_parser("merge-tile", help="Merge explicit shards into one tile")
+    merge.add_argument("output_path")
+    merge.add_argument("shard_paths", nargs="+")
+    merge.add_argument("--deduplication", choices=["neighbors", "footprints"])
+    merge.add_argument(
+        "--deduplication-options",
+        default=None,
+        type=_json,
+        help="JSON object of options for the deduplication method",
+    )
+    merge.add_argument("--overwrite", action="store_true")
+    return parser
+
+
+def main(argv=None):
+    """Parse args, run one operation, and print its result as JSON.
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Argument list (defaults to ``sys.argv``).
+
+    Returns
+    -------
+    int
+        0 on success; exits with status 2 via ``parser.error`` on
+        OSError or ValueError.
+    """
+    parser = build_parser()
+    args = parser.parse_args(argv)
     try:
-        ivalue = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError("H3 resolution must be an integer.")
-    if ivalue < 1 or ivalue > 15:
-        raise argparse.ArgumentTypeError("H3 resolution must be between 1 and 15.")
-    return ivalue
-
-
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description="Stages vector files for the PDG viz tiling pipeline"
-    )
-    p.add_argument(
-        "-c",
-        "--config",
-        help="Path to configuration JSON file",
-        default="config.json",
-        type=str,
-    )
-
-    p.add_argument("--h3-input", help="Input vector file for H3 summary (.shp/.gpkg)")
-    p.add_argument("--h3-output", help="Output H3 summary file (.gpkg)")
-    p.add_argument("--h3-res", type=valid_h3_resolution, help="H3 resolution (1-15)")
-    p.add_argument("--sum-cols", nargs="*", default=[], help="Attribute columns to sum")
-    p.add_argument("--mean-cols", nargs="*", default=[], help="Attribute columns to average")
-    p.add_argument("--land-polygons", default=None, help="Optional land/coastline polygon dataset")
-    p.add_argument("--area-epsg", type=int, default=6933, help="Equal-area EPSG (default: 6933).")
-
-    return p
-
-
-def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
-
-    stager = TileStager(args.config)
-    stager.stage_all()
-
-    if args.h3_output is not None:
-        if args.h3_input is None or args.h3_res is None:
-            raise SystemExit("If --h3-output is set, you must also set --h3-input and --h3-res.")
-
-        gen = H3GridSummaryGenerator(area_epsg=args.area_epsg, land_polygons_path=args.land_polygons)
-        gen.build_h3_summary(
-            input_path=args.h3_input,
-            output_path=args.h3_output,
-            h3_res=args.h3_res,
-            attr_to_sum=args.sum_cols,
-            attr_to_mean=args.mean_cols,
-            land_polygons_path=args.land_polygons,
-            area_epsg=args.area_epsg,
-        )
-
-    logging.info("Done")
-    logging.shutdown()
+        if args.operation == "stage-source":
+            result = stage_source(
+                args.input_path,
+                args.shard_root,
+                args.source_key,
+                tms_id=args.tms_id,
+                z=args.z,
+                path_structure=tuple(args.path_structure),
+                properties=args.properties,
+                input_crs=args.input_crs,
+                tolerance=args.tolerance,
+                overwrite=args.overwrite,
+            )
+        else:
+            deduplication = args.deduplication
+            if deduplication and args.deduplication_options:
+                deduplication = {
+                    "method": deduplication,
+                    "options": args.deduplication_options,
+                }
+            result = merge_staged_tile(
+                args.shard_paths,
+                args.output_path,
+                deduplication=deduplication,
+                overwrite=args.overwrite,
+            )
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    print(json.dumps(result, default=str))
     return 0
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     raise SystemExit(main())

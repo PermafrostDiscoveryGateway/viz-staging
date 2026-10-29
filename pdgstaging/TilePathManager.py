@@ -21,7 +21,7 @@ class TilePathManager:
         self,
         tms_id="WGS1984Quad",
         path_structure=("style", "tms", "z", "x", "y"),
-        base_dirs={},
+        base_dirs=None,
     ):
         """
         Create a TilePathManager object.
@@ -65,7 +65,7 @@ class TilePathManager:
         self.tile_type = morecantile.commons.Tile
 
         self.path_structure = path_structure
-        self.base_dirs = base_dirs or {}
+        self.base_dirs = {} if base_dirs is None else base_dirs
 
     def validate_tms_id(self, tms_id):
         """
