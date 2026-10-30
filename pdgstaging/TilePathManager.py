@@ -279,10 +279,20 @@ class TilePathManager:
         """
         if not isinstance(tile_str, str):
             raise TypeError("Tile must be a string")
-        regex = re.compile(r"(?<=x=)\d+|(?<=y=)\d+|(?<=z=)\d+")
-        x, y, z = [int(i) for i in regex.findall(tile_str)]
-        tile = morecantile.Tile(x, y, z)
-        return tile
+        # Matches x=, y=, or z= 
+        # Optionally matches a numpy wrapper like np.int64(
+        # Captures the digits that follow
+        regex = re.compile(r"(?:[xyz])=(?:np\.[a-zA-Z0-9_]+\()?(\d+)")
+        matches = [int(i) for i in regex.findall(tile_str)]
+
+        if len(matches) != 3:
+            raise ValueError(
+                f"Tile string format error: Expected 3 numbers for x, y, z, "
+                f"but found {len(matches)} in string: '{tile_str}'"
+            )
+
+        x, y, z = matches
+        return morecantile.Tile(x, y, z)
 
     def tile_from_path_or_str(self, path_or_str):
         """

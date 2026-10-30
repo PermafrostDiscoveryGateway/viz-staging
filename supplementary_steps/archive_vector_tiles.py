@@ -119,7 +119,7 @@ def archive_vector_tile(path, stager, archive_dir, ext=None):
     gdf = prepare_for_archiving(path, stager)
     # mk di
     stager.tiles.create_dirs(out_path)
-    gdf.to_file(out_path)
+    gdf.to_file(out_path, engine = "pyogrio")
     return out_path
 
 
@@ -214,7 +214,7 @@ def archive_vector_tile_parsl(path, stager, archive_dir, ext=None):
     out_path = path_manager.path_from_tile(tile=path, base_dir="archive")
     gdf = prepare_for_archiving(path, stager)
     stager.tiles.create_dirs(out_path)
-    gdf.to_file(out_path)
+    gdf.to_file(out_path, engine = "pyogrio")
 
     # prepare for archiving
     gdf = gpd.read_file(path)
@@ -224,7 +224,7 @@ def archive_vector_tile_parsl(path, stager, archive_dir, ext=None):
     gdf = filter_gdf(gdf, {prop_centroid_within_tile: True})
     gdf = remove_columns(gdf, [prop_centroid_within_tile, prop_tile])
 
-    gdf.to_file(out_path)
+    gdf.to_file(out_path, engine = "pyogrio")
     return out_path
 
 

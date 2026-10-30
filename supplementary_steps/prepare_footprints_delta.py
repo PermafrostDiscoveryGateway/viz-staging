@@ -81,7 +81,7 @@ for i, path in enumerate(input_file_list):
             # Save the single-polygon vector file to the filepath
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
-                fp.to_file(footprint_staged_path)
+                fp.to_file(footprint_staged_path, engine = "pyogrio")
     # For testing
     # if i == 10:
     #     break
